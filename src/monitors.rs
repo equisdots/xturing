@@ -4,7 +4,7 @@
 use crate::actions;
 use crate::settings::home;
 use anyhow::{Context, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::fs;
 
 #[derive(Clone)]
@@ -60,8 +60,16 @@ pub fn read() -> Result<Vec<Monitor>> {
             8
         };
         out.push(Monitor {
-            name: m.get("name").and_then(Value::as_str).unwrap_or("?").to_string(),
-            description: m.get("description").and_then(Value::as_str).unwrap_or("").to_string(),
+            name: m
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("?")
+                .to_string(),
+            description: m
+                .get("description")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
             w: m.get("width").and_then(Value::as_u64).unwrap_or(0) as u32,
             h: m.get("height").and_then(Value::as_u64).unwrap_or(0) as u32,
             rate: m.get("refreshRate").and_then(Value::as_f64).unwrap_or(0.0),
@@ -69,9 +77,17 @@ pub fn read() -> Result<Vec<Monitor>> {
             y: m.get("y").and_then(Value::as_i64).unwrap_or(0),
             scale: m.get("scale").and_then(Value::as_f64).unwrap_or(1.0),
             transform: m.get("transform").and_then(Value::as_u64).unwrap_or(0) as u32,
-            vrr: if m.get("vrr").and_then(Value::as_bool).unwrap_or(false) { 1 } else { 0 },
+            vrr: if m.get("vrr").and_then(Value::as_bool).unwrap_or(false) {
+                1
+            } else {
+                0
+            },
             disabled: m.get("disabled").and_then(Value::as_bool).unwrap_or(false),
-            mirror: m.get("mirrorOf").and_then(Value::as_str).unwrap_or("none").to_string(),
+            mirror: m
+                .get("mirrorOf")
+                .and_then(Value::as_str)
+                .unwrap_or("none")
+                .to_string(),
             cm: m
                 .get("colorManagementPreset")
                 .and_then(Value::as_str)
@@ -90,7 +106,12 @@ fn parse_mode(s: &str) -> Option<Mode> {
     let rate: f64 = rest.trim_end_matches("Hz").parse().ok()?;
     let w: u32 = w.parse().ok()?;
     let h: u32 = h.parse().ok()?;
-    Some(Mode { label: format!("{}x{}@{}", w, h, rate.round() as u32), w, h, rate })
+    Some(Mode {
+        label: format!("{}x{}@{}", w, h, rate.round() as u32),
+        w,
+        h,
+        rate,
+    })
 }
 
 impl Monitor {
@@ -104,13 +125,20 @@ impl Monitor {
 
     fn lua(&self, multi: bool, target: Option<&str>) -> String {
         if self.disabled {
-            return format!("hl.monitor({{ output = \"{}\", disabled = true }})", self.output());
+            return format!(
+                "hl.monitor({{ output = \"{}\", disabled = true }})",
+                self.output()
+            );
         }
         let rate = self
             .modes
             .iter()
             .filter(|m| m.w == self.w && m.h == self.h)
-            .min_by(|a, b| (a.rate - self.rate).abs().total_cmp(&(b.rate - self.rate).abs()))
+            .min_by(|a, b| {
+                (a.rate - self.rate)
+                    .abs()
+                    .total_cmp(&(b.rate - self.rate).abs())
+            })
             .map(|m| m.rate)
             .unwrap_or(self.rate);
         let pos = if multi {
@@ -149,7 +177,11 @@ impl Monitor {
             .modes
             .iter()
             .filter(|m| m.w == self.w && m.h == self.h)
-            .min_by(|a, b| (a.rate - self.rate).abs().total_cmp(&(b.rate - self.rate).abs()))
+            .min_by(|a, b| {
+                (a.rate - self.rate)
+                    .abs()
+                    .total_cmp(&(b.rate - self.rate).abs())
+            })
             .map(|m| m.rate)
             .unwrap_or(self.rate);
         format!(
@@ -165,7 +197,11 @@ impl Monitor {
             self.vrr,
             self.bitdepth,
             self.cm,
-            if self.mirror.is_empty() { "none" } else { &self.mirror },
+            if self.mirror.is_empty() {
+                "none"
+            } else {
+                &self.mirror
+            },
             self.disabled
         )
     }

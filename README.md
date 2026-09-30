@@ -1,157 +1,191 @@
 # xturing
 
-TUI en Rust/ratatui que ofrece **todas las opciones del panel de settings de
-equisdots** (el que se abre con `SUPER+SHIFT+D`), leyendo y escribiendo el
-mismo `~/.config/hypr/settings.json` y llamando a los mismos scripts.
+Rust/ratatui TUI that exposes **every option of the equisdots settings panel**
+(the one bound to `SUPER+SHIFT+D`), reading and writing the same
+`~/.config/hypr/settings.json` and calling the same scripts.
 
-**El nombre**: `x` como metáfora de ejecutar/controlar desde la terminal +
-**Alan Turing**: la máquina que ejecuta tus instrucciones. Segunda vía de
-interacción con el sistema: no modifica ni depende de cambios en `shell/`,
-`hyprland/`, `palettes/` ni ningún otro repo. El panel QML sigue funcionando
-igual y ambos pueden convivir (mismo contrato de escritura atómica).
+**The name**: `x` as in execute/control from the terminal + **Alan Turing**,
+the machine that runs your instructions. It is a second way to drive the
+system: it does not modify or depend on changes in `shell/`, `hyprland/`,
+`palettes/` or any other repo. The QML panel keeps working as before and both
+can coexist (same atomic write contract).
 
-## Estado
+## Status
 
-- **25 páginas** de los 6 grupos del rail: Shell (General, Timex, Keyboard,
+- **25 pages** across the 6 rail groups: Shell (General, Timex, Keyboard,
   Monitors, Startup), Bar (Engine, Position, Style, Zones, Classic Bar,
   Modules, Workspaces), Theme (Palette, Animations, Shadows, Glass, Mascots),
-  Behavior (Launcher, Notifications), Widgets (Popups) y System (Hyprland,
+  Behavior (Launcher, Notifications), Widgets (Popups) and System (Hyprland,
   Input, GPU, Idle, About).
-- **Paleta de búsqueda** (`/` o `Ctrl+P`): fuzzy match sobre todas las páginas,
-  opciones, paletas, zonas, keybinds, comandos de startup y comandos rápidos
-  (recargar, cambiar motor, ayuda, salir). Enter salta directo a la opción.
-- **Ratón y táctil**: click en el rail para cambiar de página, click en una
-  fila para seleccionar, doble-tap para abrir/ejecutar, click o arrastre en
-  `[-]`/`[+]` de los steppers, rueda para moverse.
-- **22 tests** (`cargo test`) cubren escritura atómica, merge sin perder
-  claves desconocidas, catálogo completo, engine switch con seed de
-  `classicbar`, zonas, keybinds, agrupado de ClassicBar y la búsqueda.
-- Smoke tests reales por PTY: navegar, ajustar, elegir paleta, buscar y
-  clickar en el rail; todo escribe/pinta correctamente.
+- **Search palette** (`/` or `Ctrl+P`): fuzzy match across all pages, options,
+  palettes, zones, keybinds, startup commands and quick commands (reload,
+  switch engine, help, quit). Enter jumps straight to the option.
+- **Mouse and touch**: click the rail to switch pages, click a row to select,
+  double-tap to open/run, click or drag the stepper `[-]`/`[+]` zones, wheel
+  to move the selection.
+- **Arrow navigation**: `↑`/`↓` walk the whole menu, crossing into the
+  previous/next page at the edges; `Ctrl+←`/`→` (or `[`/`]`) change page
+  directly. The per-page selection is remembered when you come back.
+- **Shortcut recorder**: in the keybind editor press `r` and then the actual
+  key combination to fill mods + key.
+- **CLI flags**: `--help`, `--version`, `--dry-run`, `--settings`, `--palettes`,
+  `--page`, `--search` (see below).
+- **22 tests** (`cargo test`) covering atomic writes, merges that preserve
+  unknown keys, the full catalog, engine switching with `classicbar` seeding,
+  zones, keybinds, ClassicBar grouping and search.
+- Real PTY smoke tests: navigate, adjust, pick a palette, search and click the
+  rail; everything writes/renders correctly.
 
-### Cobertura por página
+### Page coverage
 
-| Página | Qué incluye |
+| Page | What it includes |
 |---|---|
-| Shell · General | uiScale, appScale (dispara `scale-menu.sh`), workspaceCount (+`queueReload`), idiomas xkb, atajo de layout, wallpaper dir, abrir selector de fondo |
-| Shell · Timex | provider (open-meteo/wttr/openweather), unidad, ciudad (+refresh), API key (`timex keys set`), test de key, los ~21 knobs de layout de forecast/clock/calendar/day-panel |
-| Shell · Keyboard | lista completa de keybinds (añadir/editar/borrar, validación de duplicados) y **regenera `config/user-keybinds.lua` + `hyprctl reload`** igual que el panel |
-| Shell · Monitors | lectura `hyprctl -j monitors`, edición de resolución/refresh/rotación/VRR/bitdepth/cm/mirror/posición, **Apply** (settings.monitors + display-config + `hyprctl eval`) y Reset to auto |
-| Shell · Startup | lista de comandos y **regenera `config/user-startup.lua` + reload** |
-| Bar · Engine | selector bar/classic con seed de `classicbar` desde las zonas, mirror, classic defaults, matriz de posiciones de los 14 popups |
-| Bar · Position | `bar.position` / `classicbar.position` según motor |
-| Bar · Style | presets (aplican bundle de flags), roundness, thickness, edgeGap, opacity, fills, dragModules, font, formatos de hora/fecha, borders + **WindowBordersSection** completo (palette-follow, hex, gradientes, ángulos) |
-| Bar · Zones | zonas (añadir/borrar), align, unify, container bg + color + solid, border width/color, chips de módulos con enable/disable y movimiento (Shift+←/→) dentro y entre zonas, Center all, Default |
-| Bar · Classic Bar | style/timeFormat/distinctPills/autohide/roundness/thickness/opacity/width/hide-delay, secciones left/center/right/available con reordenar (`↑↓`), mover de sección (`m`), agrupar (`g`), desagrupar (`u`), mirror y defaults |
-| Bar · Modules | iconColor global + los 18 módulos con icon/color/accent/fill y extras (formato y tamaño de reloj, efecto typewriter, cursor, formato de fecha, marker y 7 color-slots de workspaces) |
-| Bar · Workspaces | marker (numbers/dots/letters/custom) y carácter custom |
-| Theme · Palette | lista completa desde `index.json` (x/custom/user) con filtro, selección (`bar.palette`), **edición de los 18 slots** del archivo de paleta con backup y reset, crear (a partir de la activa) y borrar |
-| Theme · Animations | enabled + presets/stepper de speed; escribe `user-animations.lua` con `luac -p` + reload vía `persist-hypr.sh` |
-| Theme · Shadows/Glass/Mascots | todos los knobs (sombras 7, glass 2, mascots especie/posición/cantidad/tamaño) |
-| Behavior · Launcher | posición, tamaños, márgenes, bordes, avoidBar, showIcons, alineación |
-| Behavior · Notifications | width/maxHeight/shadowBlur/shadowOffset/shadow/posición 6 y DND |
-| Widgets · Popups | las 16 secciones de `Personalization.js` con label `pretty()` y tipos respetados (bool/toggle, floats con step decimal, etc.) |
-| System · Hyprland | los 12 sliders de `hypr-effects.sh` (preview en vivo con `hyprctl eval`, persist con `apply` al salir), Reset, Refresh, borders de ventana |
+| Shell · General | uiScale, appScale (runs `scale-menu.sh`), workspaceCount (+`queueReload`), xkb layouts, layout shortcut, wallpaper dir, open wallpaper picker |
+| Shell · Timex | provider (open-meteo/wttr/openweather), unit, city (+refresh), API key (`timex keys set`), key test, all ~21 forecast/clock/calendar/day-panel layout knobs |
+| Shell · Keyboard | full keybind list (add/edit/delete, duplicate validation) and **regenerates `config/user-keybinds.lua` + `hyprctl reload`** like the panel |
+| Shell · Monitors | reads `hyprctl -j monitors`, edits resolution/rate/rotation/VRR/bitdepth/cm/mirror/position, **Apply** (settings.monitors + display-config + `hyprctl eval`) and Reset to auto |
+| Shell · Startup | command list and **regenerates `config/user-startup.lua` + reload** |
+| Bar · Engine | bar/classic selector with `classicbar` seeding from the zones, mirror, classic defaults, 14-popup position matrix |
+| Bar · Position | `bar.position` / `classicbar.position` depending on the engine |
+| Bar · Style | presets (apply a flag bundle), roundness, thickness, edgeGap, opacity, fills, dragModules, font, time/date formats, borders + full **WindowBordersSection** (palette-follow, hex, gradients, angles) |
+| Bar · Zones | zones (add/delete), align, unify, container bg + color + solid, border width/color, module chips with enable/disable and movement (Shift+←/→) within and across zones, Center all, Default |
+| Bar · Classic Bar | style/timeFormat/distinctPills/autohide/roundness/thickness/opacity/width/hide-delay, left/center/right/available sections with reorder (`↑↓`), move section (`m`), group (`g`), ungroup (`u`), mirror and defaults |
+| Bar · Modules | global iconColor + the 18 modules with icon/color/accent/fill and extras (clock format and size, typewriter effect, cursor, date format, workspaces marker and 7 color slots) |
+| Bar · Workspaces | marker (numbers/dots/letters/custom) and custom character |
+| Theme · Palette | full list from `index.json` (x/custom/user) with filter, selection (`bar.palette`), **editing of the 18 slots** of the palette file with backup and reset, create (from the active palette) and delete |
+| Theme · Animations | enabled + speed presets/stepper; writes `user-animations.lua` with `luac -p` + reload via `persist-hypr.sh` |
+| Theme · Shadows/Glass/Mascots | every knob (7 shadows, 2 glass, mascots species/position/count/size) |
+| Behavior · Launcher | position, sizes, margins, borders, avoidBar, showIcons, alignment |
+| Behavior · Notifications | width/maxHeight/shadowBlur/shadowOffset/shadow/6 positions and DND |
+| Widgets · Popups | the 16 `Personalization.js` sections with `pretty()` labels and respected types (bool/toggle, floats with decimal step, etc.) |
+| System · Hyprland | the 12 `hypr-effects.sh` sliders (live preview with `hyprctl eval`, `apply` persist on exit), Reset, Refresh, window borders |
 | System · Input | sensitivity, accel profile, tap-to-click, natural scroll, disable-while-typing; `persist-hypr.sh input` + reload |
-| System · GPU | modo integrated/hybrid/nvidia vía `gpu-mode.sh`, modo actual vía `envycontrol --query` |
-| System · Idle | modo Auto/Awake vía `idle-mode.sh`, estado, lock/suspend manuales |
-| System · About | sysinfo, copiar debug, `dots doctor`, updater, docs, report issue |
+| System · GPU | integrated/hybrid/nvidia mode via `gpu-mode.sh`, current mode via `envycontrol --query` |
+| System · Idle | Auto/Awake mode via `idle-mode.sh`, status, manual lock/suspend |
+| System · About | sysinfo, copy debug info, `dots doctor`, updater, docs, report issue |
 
-## Uso
+## Install
 
 ```sh
-xturing              # instalado en ~/.local/bin
+# part of the equisdots stack: clone + build + ~/.local/bin/xturing
+dots install
+
+# or standalone
+cargo install --path . --root ~/.local
 ```
 
-Para desarrollo: `cargo run` dentro de este repo.
-
-### Probar sin tocar nada (recomendado antes de subir)
+## Usage
 
 ```sh
-# 1) modo dry: ningún comando externo se ejecuta, se registran en
-#    /tmp/xturing-actions.log
+xturing                        # installed in ~/.local/bin
+xturing --page d_style         # open a page directly
+xturing --search palette       # open the search palette pre-filled
+xturing --dry-run              # no external commands (logs to /tmp/xturing-actions.log)
+xturing --help                 # all options and keys
+```
+
+| Option | Effect |
+|---|---|
+| `--settings <path>` | alternative `settings.json` |
+| `--palettes <dir>` | alternative palettes directory |
+| `--page <id>` | open a page directly (`s_general`, `d_style`, `d_palette`...) |
+| `--search <query>` | open the search palette pre-filled |
+| `--dry-run` | same as `XTURING_DRY=1` |
+| `-h, --help` / `-V, --version` | help / version |
+
+For development: `cargo run` inside this repo. Local checks (no remote CI):
+`scripts/check.sh` runs `cargo fmt --check`, `clippy -D warnings` and the tests.
+
+### Testing without touching anything (recommended)
+
+```sh
+# 1) dry mode: no external command runs, they are logged instead
+#    (/tmp/xturing-actions.log)
 XTURING_DRY=1 xturing
 
-# 2) settings sandbox: ni siquiera toca tu settings.json real
+# 2) settings sandbox: does not even touch your real settings.json
 cp ~/.config/hypr/settings.json /tmp/settings-test.json
 XTURING_DRY=1 XTURING_SETTINGS=/tmp/settings-test.json xturing
 
-# 3) paletas sandbox (para la página Palette)
+# 3) palette sandbox (for the Palette page)
 XTURING_DRY=1 \
 XTURING_SETTINGS=/tmp/settings-test.json \
 XTURING_PALETTES_DIR=/tmp/palettes-test \
 xturing
 ```
 
-Variables de entorno:
+Environment variables:
 
-| Variable | Efecto |
+| Variable | Effect |
 |---|---|
-| `XTURING_SETTINGS` | ruta alternativa de `settings.json` |
-| `XTURING_PALETTES_DIR` | ruta alternativa del directorio de paletas (`index.json` + archivos) |
-| `XTURING_DRY=1` | no ejecuta comandos; los escribe en `/tmp/xturing-actions.log` |
+| `XTURING_SETTINGS` | alternative `settings.json` path |
+| `XTURING_PALETTES_DIR` | alternative palettes directory (`index.json` + files) |
+| `XTURING_DRY=1` | runs no commands; logs them to `/tmp/xturing-actions.log` |
 
-## Teclas
-
-```
-↑↓ / j k      mover selección          Tab / Shift+Tab  página siguiente/anterior
-←→ / h l      ajustar / ciclar        1..6             ir a grupo (Shell, Bar, Theme, Behavior, Widgets, System)
-Enter/Space   editar, togglear, elegir opción, ejecutar acción
-/ o Ctrl+P    paleta de búsqueda       r                recargar settings.json
-?             ayuda                    q / Ctrl+C       salir (persiste efectos pendientes)
-a / d / w     añadir / borrar / guardar listas (keybinds, startup)
-Shift+←/→     mover módulo entre zonas (Zones)
-m / g / u     mover de sección / agrupar / desagrupar (Classic Bar)
-```
-
-Ratón / táctil (la terminal debe reportar eventos de ratón, p. ej. foot,
-kitty o wezterm; en tablet el tap equivale al click):
+## Keys
 
 ```
-click         seleccionar fila (en el rail: cambiar de página)
-doble-tap     abrir / ejecutar la fila
-[-] / [+]     pulsar o arrastrar para ajustar steppers
-rueda         subir / bajar selección
+↑↓ / j k      move selection (wraps across pages at the edges)
+←→ / h l      adjust / cycle          Tab / Shift+Tab  next / previous page
+Ctrl+←/→ [ ]  previous / next page    1..6             jump to group (Shell, Bar, Theme, Behavior, Widgets, System)
+Enter/Space   edit, toggle, choose an option, run an action
+/ or Ctrl+P   search palette          r                reload settings.json
+?             help                    q / Ctrl+C       quit (flushes pending effects)
+a / d / w     add / delete / save lists (keybinds, startup)
+r (in form)   record a shortcut by pressing it
+Shift+←/→     move a module across zones (Zones)
+m / g / u     move section / group / ungroup (Classic Bar)
 ```
 
-## Contrato de escritura
+Mouse / touch (the terminal must report mouse events, e.g. foot, kitty or
+wezterm; on a tablet a tap is a click):
 
-- `settings.json` se escribe con `tmp + rename` atómico y `serde_json`
-  preservando orden y **claves desconocidas**.
-- Las escrituras son inmediatas (el panel QML usa un debounce de 220 ms;
-  el resultado final es el mismo).
-- Los caracteres de control en `bar.modules` (iconos glyph) se leen/escriben
-  tal cual, sin sanear.
-- El shell detecta cambios externos por sus watchers (`FileView`/`inotify`),
-  así que los cambios se reflejan en vivo sin tocarlo.
+```
+click         select row (on the rail: switch page)
+double-tap    open / run the row
+[-] / [+]     click or drag to adjust steppers
+wheel         move selection up / down
+```
 
-## Estructura
+## Write contract
+
+- `settings.json` is written with atomic `tmp + rename` and `serde_json`,
+  preserving key order and **unknown keys**.
+- Writes are immediate (the QML panel debounces 220 ms; the end result is the
+  same).
+- Control characters in `bar.modules` (glyph icons) are read/written as-is,
+  without sanitizing.
+- The shell notices external changes through its watchers
+  (`FileView`/`inotify`), so edits show up live without touching it.
+
+## Structure
 
 ```
 src/
-  settings.rs   lectura/escritura atómica + tests
-  catalog.rs    definición data-driven de las 25 páginas y sus controles
-  app.rs        estado, navegación, edición, páginas especiales, side effects
-  ui.rs         render ratatui (rail, contenido, chooser, formularios, ayuda)
-  palette.rs    index.json, edición de paletas con backup, crear/borrar
-  classic.rs    defaults/mirrorBar/normalize de ClassicBar
-  monitors.rs   hyprctl monitors, apply/reset con lua + display-config
-  actions.rs    spawn/capture (con modo dry), notify-send
+  settings.rs   atomic read/write + tests
+  catalog.rs    data-driven definition of the 25 pages and their controls
+  app.rs        state, navigation, editing, special pages, side effects
+  ui.rs         ratatui rendering (rail, content, chooser, forms, help)
+  palette.rs    index.json, palette editing with backup, create/delete
+  classic.rs    ClassicBar defaults/mirrorBar/normalize
+  monitors.rs   hyprctl monitors, apply/reset with lua + display-config
+  actions.rs    spawn/capture (with dry mode), notify-send
+scripts/check.sh  local fmt + clippy + test gate
 ```
 
-## Diferencias conocidas vs. el panel QML
+## Known differences vs. the QML panel
 
-- **Zones**: no hay drag & drop; el movimiento equivalente es
-  `Shift+←/→` (dentro y entre zonas) y Enter para activar/desactivar.
-- **ClassicBar**: agrupar/desagrupar con `g`/`u` en vez de arrastrar.
-- **Monitors**: el canvas de arrastre se sustituye por campos Position X/Y.
-- **Palette**: los colores se editan como hex (`#rrggbb`) en vez de swatch
-  picker; "New palette" clona los 8 colores base de la paleta activa (el
-  panel permite editar el draft antes de crear).
-- **General**: la lista de idiomas xkb es campo de texto (se acepta cualquier
-  código válido) en vez de sugerencias.
-- El botón *Refresh* de Hyprland aquí funciona (`hypr-effects.sh read`); en el
-  panel QML actual llama a un método inexistente.
+- **Zones**: no drag & drop; the equivalent is `Shift+←/→` (within and across
+  zones) and Enter to enable/disable.
+- **ClassicBar**: group/ungroup with `g`/`u` instead of dragging.
+- **Monitors**: the drag canvas is replaced by Position X/Y fields.
+- **Palette**: colors are edited as hex (`#rrggbb`) instead of a swatch
+  picker; "New palette" clones the 8 base colors of the active palette (the
+  panel lets you edit the draft before creating).
+- **General**: the xkb layout list is a text field (any valid code is
+  accepted) instead of suggestions.
+- The Hyprland *Refresh* button works here (`hypr-effects.sh read`); in the
+  current QML panel it calls a method that does not exist.
 
-Nada de esto cambia el archivo de settings ni el formato: son diferencias de
-interacción, no de contrato.
+None of this changes the settings file or its format: these are interaction
+differences, not contract differences.

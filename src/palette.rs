@@ -3,12 +3,22 @@
 
 use crate::actions;
 use crate::settings::{home, write_atomic};
-use anyhow::{bail, Result};
-use serde_json::{json, Map, Value};
+use anyhow::{Result, bail};
+use serde_json::{Map, Value, json};
 use std::fs;
 use std::path::PathBuf;
 
+static PALETTES_OVERRIDE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// CLI override (`--palettes`); wins over the environment variable.
+pub fn set_palettes_dir(path: PathBuf) {
+    let _ = PALETTES_OVERRIDE.set(path);
+}
+
 pub fn palettes_dir() -> PathBuf {
+    if let Some(dir) = PALETTES_OVERRIDE.get() {
+        return dir.clone();
+    }
     if let Ok(p) = std::env::var("XTURING_PALETTES_DIR") {
         return PathBuf::from(p);
     }
@@ -39,14 +49,23 @@ pub fn load_index() -> Vec<PaletteEntry> {
         .into_iter()
         .filter_map(|v| {
             let slug = v.get("slug")?.as_str()?.to_string();
-            let name = v.get("name").and_then(Value::as_str).unwrap_or(&slug).to_string();
+            let name = v
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or(&slug)
+                .to_string();
             let category = v
                 .get("category")
                 .and_then(Value::as_str)
                 .unwrap_or("custom")
                 .to_string();
             let path = v.get("path").and_then(Value::as_str).map(str::to_string);
-            Some(PaletteEntry { slug, name, category, path })
+            Some(PaletteEntry {
+                slug,
+                name,
+                category,
+                path,
+            })
         })
         .collect()
 }
@@ -120,9 +139,21 @@ pub fn load_palette(entry: &PaletteEntry) -> Result<PaletteFile> {
     Ok(PaletteFile {
         slug: entry.slug.clone(),
         path,
-        name: raw.get("name").and_then(Value::as_str).unwrap_or(&entry.name).to_string(),
-        background: raw.get("background").and_then(Value::as_str).unwrap_or(&base16[0]).to_string(),
-        foreground: raw.get("foreground").and_then(Value::as_str).unwrap_or(&base16[15]).to_string(),
+        name: raw
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or(&entry.name)
+            .to_string(),
+        background: raw
+            .get("background")
+            .and_then(Value::as_str)
+            .unwrap_or(&base16[0])
+            .to_string(),
+        foreground: raw
+            .get("foreground")
+            .and_then(Value::as_str)
+            .unwrap_or(&base16[15])
+            .to_string(),
         base16,
         raw,
     })
@@ -198,9 +229,11 @@ pub fn slugify(name: &str) -> String {
         if ch.is_ascii_alphanumeric() {
             out.push(ch);
         } else if (ch.is_whitespace() || ch == '-' || ch == '_')
-            && !out.ends_with('-') && !out.is_empty() {
-                out.push('-');
-            }
+            && !out.ends_with('-')
+            && !out.is_empty()
+        {
+            out.push('-');
+        }
     }
     while out.ends_with('-') {
         out.pop();

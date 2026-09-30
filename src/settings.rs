@@ -43,7 +43,9 @@ impl Settings {
     /// Re-read the file when it changed on disk (the shell also writes it).
     /// Returns true when new content was loaded.
     pub fn reload_if_changed(&mut self) -> Result<bool> {
-        let mtime = fs::metadata(&self.path).ok().and_then(|m| m.modified().ok());
+        let mtime = fs::metadata(&self.path)
+            .ok()
+            .and_then(|m| m.modified().ok());
         if mtime == self.mtime {
             return Ok(false);
         }
@@ -54,7 +56,9 @@ impl Settings {
 
     pub fn reload(&mut self) -> Result<()> {
         self.data = read_json_object(&self.path)?;
-        self.mtime = fs::metadata(&self.path).ok().and_then(|m| m.modified().ok());
+        self.mtime = fs::metadata(&self.path)
+            .ok()
+            .and_then(|m| m.modified().ok());
         Ok(())
     }
 
@@ -74,8 +78,10 @@ impl Settings {
     }
 
     pub fn get_f64(&self, path: &[&str]) -> Option<f64> {
-        self.get(path)
-            .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+        self.get(path).and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        })
     }
 
     /// Set a nested path and persist atomically. Returns true when it changed.
@@ -99,7 +105,9 @@ impl Settings {
         let json = serde_json::to_string_pretty(&Value::Object(self.data.clone()))
             .context("serialize settings.json")?;
         write_atomic(&self.path, json.as_bytes())?;
-        self.mtime = fs::metadata(&self.path).ok().and_then(|m| m.modified().ok());
+        self.mtime = fs::metadata(&self.path)
+            .ok()
+            .and_then(|m| m.modified().ok());
         Ok(())
     }
 }
@@ -124,7 +132,10 @@ pub fn read_json_object(path: &Path) -> Result<Map<String, Value>> {
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     let dir = path.parent().unwrap_or(Path::new("."));
     fs::create_dir_all(dir).ok();
-    let base = path.file_name().and_then(|s| s.to_str()).unwrap_or("settings.json");
+    let base = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("settings.json");
     let tmp = dir.join(format!(".{}.tmp.{}", base, std::process::id()));
     fs::write(&tmp, bytes).with_context(|| format!("write {}", tmp.display()))?;
     fs::rename(&tmp, path).with_context(|| format!("rename into {}", path.display()))?;
@@ -188,7 +199,8 @@ mod tests {
         .unwrap();
         let mut s = Settings::load_from(path.clone()).unwrap();
         s.set(&["bar", "thickness"], json!(56)).unwrap();
-        s.set(&["bar", "modules", "time", "size"], json!(18)).unwrap();
+        s.set(&["bar", "modules", "time", "size"], json!(18))
+            .unwrap();
         let text = fs::read_to_string(&path).unwrap();
         let v: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(v["bar"]["thickness"], json!(56));

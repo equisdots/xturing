@@ -1,6 +1,6 @@
 //! ClassicBar model helpers (port of the BarLayout.js pieces the editor uses).
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub const SECTIONS: [&str; 4] = ["left", "center", "right", "available"];
 
@@ -29,8 +29,24 @@ pub fn defaults() -> Map<String, Value> {
 }
 
 pub const CATALOG_IDS: &[&str] = &[
-    "help", "search", "settings", "update", "time", "date", "media", "workspaces", "tray",
-    "keyboard", "wifi", "bluetooth", "sysmon", "volume", "battery", "recording", "weather", "focus",
+    "help",
+    "search",
+    "settings",
+    "update",
+    "time",
+    "date",
+    "media",
+    "workspaces",
+    "tray",
+    "keyboard",
+    "wifi",
+    "bluetooth",
+    "sysmon",
+    "volume",
+    "battery",
+    "recording",
+    "weather",
+    "focus",
 ];
 
 /// Port of `barToClassicModules`: enabled modules per zone, align -> section,
@@ -55,7 +71,9 @@ pub fn bar_to_classic(bar: &Map<String, Value>) -> Value {
         if let Some(mods) = zone.get("modules").and_then(Value::as_array) {
             for m in mods {
                 let enabled_flag = m.get("enabled").and_then(Value::as_bool).unwrap_or(false);
-                let Some(id) = m.get("id").and_then(Value::as_str) else { continue };
+                let Some(id) = m.get("id").and_then(Value::as_str) else {
+                    continue;
+                };
                 if enabled_flag && !seen.contains(&id.to_string()) {
                     seen.push(id.to_string());
                     enabled.push(id.to_string());
@@ -122,10 +140,12 @@ pub fn normalize_modules(modules: &mut Value) {
                     let mut members: Vec<Value> = Vec::new();
                     for m in group {
                         if let Value::String(id) = m
-                            && CATALOG_IDS.contains(&id.as_str()) && !seen.contains(&id) {
-                                seen.push(id.clone());
-                                members.push(Value::String(id));
-                            }
+                            && CATALOG_IDS.contains(&id.as_str())
+                            && !seen.contains(&id)
+                        {
+                            seen.push(id.clone());
+                            members.push(Value::String(id));
+                        }
                     }
                     if members.len() >= 2 {
                         out.push(Value::Array(members));

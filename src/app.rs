@@ -7,7 +7,7 @@ use crate::monitors::{self, Monitor};
 use crate::palette::{self, PaletteEntry, PaletteFile};
 use crate::settings::Settings;
 use anyhow::Result;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
@@ -35,20 +35,49 @@ impl Row {
 
 #[derive(Clone)]
 pub enum EditTarget {
-    Control { path: Vec<String>, numeric: bool, label: String },
-    Keybind { kb: usize, field: usize },
+    Control {
+        path: Vec<String>,
+        numeric: bool,
+        label: String,
+    },
+    Keybind {
+        kb: usize,
+        field: usize,
+    },
     Startup(usize),
-    PaletteSlot { slot: usize, slug: String },
+    PaletteSlot {
+        slot: usize,
+        slug: String,
+    },
     PaletteFilter,
-    Prompt { prefix: String, prompt: String },
+    Prompt {
+        prefix: String,
+        prompt: String,
+    },
 }
 
 pub enum Mode {
     Browse,
-    Edit { target: EditTarget, buf: String, cursor: usize },
-    Confirm { action: Action, msg: String },
-    Chooser { target: ChooserTarget, idx: usize },
-    Form { kb: usize, field: usize },
+    Edit {
+        target: EditTarget,
+        buf: String,
+        cursor: usize,
+    },
+    Confirm {
+        action: Action,
+        msg: String,
+    },
+    Chooser {
+        target: ChooserTarget,
+        idx: usize,
+    },
+    Form {
+        kb: usize,
+        field: usize,
+    },
+    Record {
+        kb: usize,
+    },
     Help,
     Search(SearchState),
 }
@@ -70,11 +99,39 @@ pub struct SearchEntry {
 #[derive(Clone)]
 pub enum SearchTarget {
     Page(usize),
-    Control { page: usize, index: usize },
-    Zone { page: usize, zone: usize },
-    PaletteItem { page: usize, index: usize },
-    Keybind { page: usize, index: usize },
-    Startup { page: usize, index: usize },
+    Control {
+        page: usize,
+        index: usize,
+    },
+    Zone {
+        page: usize,
+        zone: usize,
+    },
+    ZoneModule {
+        page: usize,
+        zone: usize,
+        index: usize,
+    },
+    PaletteItem {
+        page: usize,
+        index: usize,
+    },
+    PaletteSlot {
+        page: usize,
+        slot: usize,
+    },
+    Monitor {
+        page: usize,
+        monitor: usize,
+    },
+    Keybind {
+        page: usize,
+        index: usize,
+    },
+    Startup {
+        page: usize,
+        index: usize,
+    },
     Command(SearchCommand),
 }
 
@@ -111,9 +168,19 @@ pub struct DragState {
 }
 
 pub enum ChooserTarget {
-    Control { path: Vec<String>, state_action: Option<Action>, opts: Vec<Opt> },
-    Keybind { kb: usize, field: usize },
-    Monitor { mon: usize, field: usize },
+    Control {
+        path: Vec<String>,
+        state_action: Option<Action>,
+        opts: Vec<Opt>,
+    },
+    Keybind {
+        kb: usize,
+        field: usize,
+    },
+    Monitor {
+        mon: usize,
+        field: usize,
+    },
 }
 
 #[derive(Clone)]
@@ -149,6 +216,7 @@ pub struct App {
     pub engine: String,
     pub page: usize,
     pub sel: usize,
+    pub sel_memory: Vec<usize>,
     pub rows: Vec<Row>,
     pub controls: Vec<Control>,
     pub mode: Mode,
@@ -177,13 +245,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Result<Self> {
-        Self::with_settings(Settings::load()?)
-    }
-
     pub fn with_settings(settings: Settings) -> Result<Self> {
         let settings = settings;
-        let engine = settings.get_str(&["barEngine"]).unwrap_or_else(|| "bar".into());
+        let engine = settings
+            .get_str(&["barEngine"])
+            .unwrap_or_else(|| "bar".into());
         let keybinds = settings
             .get(&["keybinds"])
             .and_then(Value::as_array)
@@ -194,12 +260,15 @@ impl App {
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
+        let pages = catalog::build();
+        let page_count = pages.len();
         let mut app = Self {
             settings,
-            pages: catalog::build(),
+            pages,
             engine,
             page: 0,
             sel: 0,
+            sel_memory: vec![0; page_count],
             rows: Vec::new(),
             controls: Vec::new(),
             mode: Mode::Browse,
@@ -253,6 +322,13 @@ impl App {
     }
 
     pub fn next_page(&mut self, delta: i32) {
+        self.remember_selection();
+        self.step_page(delta);
+        self.restore_selection();
+    }
+
+    /// Page change without touching the per-page selection memory.
+    fn step_page(&mut self, delta: i32) {
         let vis = self.visible_page_indices();
         if vis.is_empty() {
             return;
@@ -272,17 +348,62 @@ impl App {
             .filter(|&i| self.pages[i].group == group)
             .collect();
         if let Some(&first) = candidates.first() {
+            self.remember_selection();
             self.page = first;
             self.sel = 0;
             self.refresh_page_state();
+            self.restore_selection();
         }
+    }
+
+    pub fn goto_page_id(&mut self, id: &str) -> bool {
+        let Some(page) = self
+            .visible_page_indices()
+            .into_iter()
+            .find(|&i| self.pages[i].id == id)
+        else {
+            return false;
+        };
+        self.remember_selection();
+        self.page = page;
+        self.sel = 0;
+        self.refresh_page_state();
+        self.restore_selection();
+        true
+    }
+
+    pub fn remember_selection(&mut self) {
+        if let Some(slot) = self.sel_memory.get_mut(self.page) {
+            *slot = self.sel;
+        }
+    }
+
+    pub fn restore_selection(&mut self) {
+        let remembered = self.sel_memory.get(self.page).copied().unwrap_or(0);
+        self.sel = remembered.min(self.rows.len().saturating_sub(1));
+        if !self.rows.is_empty()
+            && !self.rows[self.sel].selectable()
+            && let Some(i) = self.first_selectable()
+        {
+            self.sel = i;
+        }
+    }
+
+    fn first_selectable(&self) -> Option<usize> {
+        self.rows.iter().position(|r| r.selectable())
+    }
+
+    fn last_selectable(&self) -> Option<usize> {
+        self.rows.iter().rposition(|r| r.selectable())
     }
 
     fn cond_ok(&self, cond: &Cond) -> bool {
         match cond {
             Cond::Engine(e) => self.engine == *e,
             Cond::Eq(path, want) => {
-                let got = self.settings.get(&path.iter().map(String::as_str).collect::<Vec<_>>());
+                let got = self
+                    .settings
+                    .get(&path.iter().map(String::as_str).collect::<Vec<_>>());
                 json_eq_loose(got, want)
             }
         }
@@ -398,7 +519,10 @@ impl App {
                     rows.push(Row::PaletteItem(i));
                 }
                 if let Some(p) = &self.palette {
-                    rows.push(Row::Section(format!("Active palette — {} ({})", p.name, p.slug)));
+                    rows.push(Row::Section(format!(
+                        "Active palette — {} ({})",
+                        p.name, p.slug
+                    )));
                     for slot in 0..18 {
                         rows.push(Row::PaletteSlot(slot));
                     }
@@ -499,23 +623,45 @@ impl App {
         if self.sel >= self.rows.len() {
             self.sel = self.rows.len() - 1;
         }
-        if !self.rows[self.sel].selectable() {
-            self.move_selection(1);
+        // Do not use move_selection here: clamping is a layout fix, not a
+        // user movement, and must not touch the per-page selection memory.
+        if !self.rows[self.sel].selectable()
+            && let Some(i) = self.first_selectable()
+        {
+            self.sel = i;
         }
     }
 
+    /// Move the selection; at the edges of a page it crosses to the
+    /// neighbouring page, so the whole menu is reachable with arrows alone.
     pub fn move_selection(&mut self, delta: i32) {
         if self.rows.is_empty() {
             return;
         }
         let len = self.rows.len() as i32;
-        let mut idx = self.sel as i32;
-        for _ in 0..len {
-            idx = (idx + delta).rem_euclid(len);
+        let mut idx = self.sel as i32 + delta;
+        while idx >= 0 && idx < len {
             if self.rows[idx as usize].selectable() {
                 self.sel = idx as usize;
+                self.remember_selection();
                 return;
             }
+            idx += delta;
+        }
+        // No selectable row in that direction inside this page: cross pages.
+        self.remember_selection();
+        let before = self.page;
+        self.step_page(delta.signum());
+        if self.page != before {
+            let target = if delta > 0 {
+                self.first_selectable()
+            } else {
+                self.last_selectable()
+            };
+            if let Some(i) = target {
+                self.sel = i;
+            }
+            self.remember_selection();
         }
     }
 
@@ -672,7 +818,9 @@ impl App {
     // ───────────────────────── generic control ops ─────────────────────────
 
     pub fn adjust_control(&mut self, idx: usize, delta: i32) {
-        let Some(c) = self.controls.get(idx).cloned() else { return };
+        let Some(c) = self.controls.get(idx).cloned() else {
+            return;
+        };
         if !self.control_visible(&c) {
             return;
         }
@@ -690,10 +838,19 @@ impl App {
                     self.write_path(&c.path, Value::Bool(new));
                 }
             }
-            Kind::Stepper { step, min, max, decimals, .. } => {
+            Kind::Stepper {
+                step,
+                min,
+                max,
+                decimals,
+                ..
+            } => {
                 let cur = self
                     .control_value(&c)
-                    .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                    .and_then(|v| {
+                        v.as_f64()
+                            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                    })
                     .unwrap_or(0.0);
                 let mut new = cur + (*step * delta as f64);
                 new = new.clamp(*min, *max);
@@ -730,7 +887,9 @@ impl App {
     }
 
     pub fn activate_control(&mut self, idx: usize) {
-        let Some(c) = self.controls.get(idx).cloned() else { return };
+        let Some(c) = self.controls.get(idx).cloned() else {
+            return;
+        };
         if !self.control_visible(&c) {
             return;
         }
@@ -753,7 +912,11 @@ impl App {
                     idx: pos,
                 };
             }
-            Kind::StateOptions { options, action, state_key } => {
+            Kind::StateOptions {
+                options,
+                action,
+                state_key,
+            } => {
                 let cur = self.vstate.get(state_key).cloned().unwrap_or_default();
                 let pos = options.iter().position(|o| o.value == cur).unwrap_or(0);
                 self.mode = Mode::Chooser {
@@ -860,7 +1023,10 @@ impl App {
             .get(field)
             .map(|o| {
                 o.iter()
-                    .map(|(l, v)| Opt { label: (*l).into(), value: (*v).into() })
+                    .map(|(l, v)| Opt {
+                        label: (*l).into(),
+                        value: (*v).into(),
+                    })
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
@@ -944,10 +1110,9 @@ impl App {
         let len = match &self.mode {
             Mode::Chooser { target, .. } => match target {
                 ChooserTarget::Control { opts, .. } => opts.len(),
-                ChooserTarget::Keybind { field, .. } => KEYBIND_OPTIONS
-                    .get(*field)
-                    .map(|o| o.len())
-                    .unwrap_or(0),
+                ChooserTarget::Keybind { field, .. } => {
+                    KEYBIND_OPTIONS.get(*field).map(|o| o.len()).unwrap_or(0)
+                }
                 ChooserTarget::Monitor { mon, field } => {
                     self.monitor_field_options(*mon, *field).len()
                 }
@@ -1000,12 +1165,19 @@ impl App {
             Some(Row::Keybind(i)) => self.keybind_delete(i),
             Some(Row::Startup(i)) => self.startup_delete(i),
             Some(Row::PaletteItem(i)) => {
-                let slug = self.palettes.get(i).map(|e| e.slug.clone()).unwrap_or_default();
+                let slug = self
+                    .palettes
+                    .get(i)
+                    .map(|e| e.slug.clone())
+                    .unwrap_or_default();
                 if slug == "x" {
                     self.set_status("'x' cannot be deleted");
                 } else if !slug.is_empty() {
                     self.palette_delete_slug = Some(slug.clone());
-                    self.begin_confirm(Action::PaletteDelete, &format!("Delete palette '{}'?", slug));
+                    self.begin_confirm(
+                        Action::PaletteDelete,
+                        &format!("Delete palette '{}'?", slug),
+                    );
                 }
             }
             _ => {}
@@ -1022,22 +1194,29 @@ impl App {
 
     fn open_chooser_for_control(&mut self, idx: usize) {
         if let Some(c) = self.controls.get(idx).cloned()
-            && let Kind::StateOptions { options, action, state_key } = &c.kind {
-                let cur = self.vstate.get(state_key).cloned().unwrap_or_default();
-                let pos = options.iter().position(|o| o.value == cur).unwrap_or(0);
-                self.mode = Mode::Chooser {
-                    target: ChooserTarget::Control {
-                        path: Vec::new(),
-                        state_action: Some(action.clone()),
-                        opts: options.clone(),
-                    },
-                    idx: pos,
-                };
-            }
+            && let Kind::StateOptions {
+                options,
+                action,
+                state_key,
+            } = &c.kind
+        {
+            let cur = self.vstate.get(state_key).cloned().unwrap_or_default();
+            let pos = options.iter().position(|o| o.value == cur).unwrap_or(0);
+            self.mode = Mode::Chooser {
+                target: ChooserTarget::Control {
+                    path: Vec::new(),
+                    state_action: Some(action.clone()),
+                    opts: options.clone(),
+                },
+                idx: pos,
+            };
+        }
     }
 
     fn begin_edit_control(&mut self, idx: usize) {
-        let Some(c) = self.controls.get(idx).cloned() else { return };
+        let Some(c) = self.controls.get(idx).cloned() else {
+            return;
+        };
         let current = self
             .control_value(&c)
             .map(value_to_string)
@@ -1068,14 +1247,17 @@ impl App {
         ));
         for line in text.lines() {
             if let Some((k, v)) = line.split_once('=')
-                && let Ok(n) = v.trim().parse::<f64>() {
-                    self.hypr.insert(k.trim().to_string(), n);
-                }
+                && let Ok(n) = v.trim().parse::<f64>()
+            {
+                self.hypr.insert(k.trim().to_string(), n);
+            }
         }
     }
 
     fn set_hypr(&mut self, c: &Control, value: f64) {
-        let Some(key) = c.path.get(1).cloned() else { return };
+        let Some(key) = c.path.get(1).cloned() else {
+            return;
+        };
         self.hypr.insert(key.clone(), value);
         self.hypr_dirty.insert(key);
         self.pending.push(Pending {
@@ -1098,7 +1280,13 @@ impl App {
         }
         let args: Vec<String> = dirty
             .iter()
-            .map(|k| format!("{}={}", k, fmt_num(self.hypr.get(k).copied().unwrap_or(0.0))))
+            .map(|k| {
+                format!(
+                    "{}={}",
+                    k,
+                    fmt_num(self.hypr.get(k).copied().unwrap_or(0.0))
+                )
+            })
             .collect();
         let script = actions::quickshell_dir() + "/core/scripts/hypr-effects.sh";
         actions::spawn(&format!("bash {} preview {}", script, args.join(" ")));
@@ -1111,7 +1299,13 @@ impl App {
         let args: Vec<String> = HYPR_ORDER
             .iter()
             .filter(|k| self.hypr_dirty.contains(**k))
-            .map(|k| format!("{}={}", k, fmt_num(self.hypr.get(*k).copied().unwrap_or(0.0))))
+            .map(|k| {
+                format!(
+                    "{}={}",
+                    k,
+                    fmt_num(self.hypr.get(*k).copied().unwrap_or(0.0))
+                )
+            })
             .collect();
         let script = actions::quickshell_dir() + "/core/scripts/hypr-effects.sh";
         actions::spawn(&format!("bash {} apply {}", script, args.join(" ")));
@@ -1165,7 +1359,11 @@ impl App {
                 };
             }
             Action::PaletteDelete => {
-                let slug = self.palette.as_ref().map(|p| p.slug.clone()).unwrap_or_default();
+                let slug = self
+                    .palette
+                    .as_ref()
+                    .map(|p| p.slug.clone())
+                    .unwrap_or_default();
                 if slug == "x" {
                     self.set_status("'x' is the fallback palette and cannot be deleted");
                 } else if !slug.is_empty() {
@@ -1202,13 +1400,21 @@ impl App {
             }
             Action::GpuMode => {
                 let value = arg.unwrap_or_default();
-                actions::spawn(&format!("bash {} {}", actions::script("gpu-mode.sh"), value));
+                actions::spawn(&format!(
+                    "bash {} {}",
+                    actions::script("gpu-mode.sh"),
+                    value
+                ));
                 self.vstate.insert("gpu".into(), value);
             }
             Action::GpuRefresh => self.refresh_gpu(),
             Action::IdleMode => {
                 let value = arg.unwrap_or_default();
-                actions::spawn(&format!("bash {} {}", actions::script("idle-mode.sh"), value));
+                actions::spawn(&format!(
+                    "bash {} {}",
+                    actions::script("idle-mode.sh"),
+                    value
+                ));
                 self.vstate.insert("idle".into(), value);
             }
             Action::LockNow => actions::spawn(&format!("bash {}", actions::script("lock.sh"))),
@@ -1217,8 +1423,12 @@ impl App {
                 let on = self.dnd_on();
                 let dir = dnd_dir();
                 let val = if on { "0" } else { "1" };
-                actions::spawn(&format!("mkdir -p '{}' && echo '{}' > '{}/state'", dir, val, dir));
-                self.infos.insert("dnd".into(), if on { "off".into() } else { "on".into() });
+                actions::spawn(&format!(
+                    "mkdir -p '{}' && echo '{}' > '{}/state'",
+                    dir, val, dir
+                ));
+                self.infos
+                    .insert("dnd".into(), if on { "off".into() } else { "on".into() });
             }
             Action::OpenWidget(id) => {
                 actions::spawn(&format!(
@@ -1235,9 +1445,12 @@ impl App {
                 self.set_status("Debug info copied to clipboard");
             }
             Action::RunDoctor => {
-                let out = actions::capture("D=\"$HOME/.local/share/equisdots/dots/dots\"; if [ -x \"$D\" ]; then bash \"$D\" doctor 2>&1; else echo \"dots is not installed (run: dots system && dots install)\"; fi");
+                let out = actions::capture(
+                    "D=\"$HOME/.local/share/equisdots/dots/dots\"; if [ -x \"$D\" ]; then bash \"$D\" doctor 2>&1; else echo \"dots is not installed (run: dots system && dots install)\"; fi",
+                );
                 let first: String = out.chars().take(400).collect();
-                self.infos.insert("guide.doctor".into(), first.replace('\n', " | "));
+                self.infos
+                    .insert("guide.doctor".into(), first.replace('\n', " | "));
                 self.set_status("Doctor finished");
             }
             Action::OpenUrl(url) => actions::spawn(&format!("xdg-open '{}'", url)),
@@ -1261,7 +1474,12 @@ impl App {
 
     fn apply_chooser_value(&mut self, target: ChooserTarget, idx: usize) {
         match target {
-            ChooserTarget::Control { path, state_action, opts, .. } => {
+            ChooserTarget::Control {
+                path,
+                state_action,
+                opts,
+                ..
+            } => {
                 let Some(opt) = opts.get(idx) else { return };
                 if let Some(act) = state_action {
                     self.run_action(act, Some(opt.value.clone()));
@@ -1321,8 +1539,18 @@ impl App {
     pub fn save_keybinds(&mut self) {
         let mut rows: Vec<Value> = Vec::new();
         for b in &self.keybinds {
-            let key = b.get("key").and_then(Value::as_str).unwrap_or("").trim().to_string();
-            let command = b.get("command").and_then(Value::as_str).unwrap_or("").trim().to_string();
+            let key = b
+                .get("key")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let command = b
+                .get("command")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if key.is_empty() && command.is_empty() {
                 continue;
             }
@@ -1339,7 +1567,11 @@ impl App {
         for b in &rows {
             let combo = format!(
                 "{} {}",
-                b.get("mods").and_then(Value::as_str).unwrap_or("").replace('&', " ").trim(),
+                b.get("mods")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .replace('&', " ")
+                    .trim(),
                 b.get("key").and_then(Value::as_str).unwrap_or("")
             );
             if !seen.insert(combo.clone()) {
@@ -1385,7 +1617,11 @@ impl App {
                 "bindm" => flags.push("mouse = true"),
                 _ => {}
             }
-            let mods = b.get("mods").and_then(Value::as_str).unwrap_or("").replace('&', " ");
+            let mods = b
+                .get("mods")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .replace('&', " ");
             let mods = mods.trim();
             let keys = if mods.is_empty() {
                 key.to_string()
@@ -1430,7 +1666,11 @@ impl App {
             .startup
             .iter()
             .filter_map(|s| {
-                let cmd = s.get("command").and_then(Value::as_str).unwrap_or("").trim();
+                let cmd = s
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim();
                 if cmd.is_empty() {
                     None
                 } else {
@@ -1449,7 +1689,10 @@ impl App {
         ];
         for s in &self.startup {
             if let Some(cmd) = s.get("command").and_then(Value::as_str) {
-                lines.push(format!("    hl.exec_cmd({})", serde_json::to_string(cmd).unwrap()));
+                lines.push(format!(
+                    "    hl.exec_cmd({})",
+                    serde_json::to_string(cmd).unwrap()
+                ));
             }
         }
         lines.push("end)".to_string());
@@ -1471,7 +1714,11 @@ impl App {
             return;
         }
         if engine == "classic" {
-            let has = self.settings.get(&["classicbar"]).map(Value::is_object).unwrap_or(false);
+            let has = self
+                .settings
+                .get(&["classicbar"])
+                .map(Value::is_object)
+                .unwrap_or(false);
             if !has {
                 let bar_position = self
                     .settings
@@ -1489,18 +1736,21 @@ impl App {
                 let _ = self.settings.set(&["classicbar"], Value::Object(cfg));
             }
         }
-        let _ = self.settings.set(&["barEngine"], Value::String(engine.into()));
+        let _ = self
+            .settings
+            .set(&["barEngine"], Value::String(engine.into()));
         self.engine = engine.to_string();
         self.vstate.insert("engine".into(), engine.to_string());
         // If current page is engine-gated and no longer visible, fall back.
         if let Some(gate) = self.current_page().engine
-            && gate != self.engine {
-                self.page = self
-                    .pages
-                    .iter()
-                    .position(|p| p.id == "d_engine")
-                    .unwrap_or(0);
-            }
+            && gate != self.engine
+        {
+            self.page = self
+                .pages
+                .iter()
+                .position(|p| p.id == "d_engine")
+                .unwrap_or(0);
+        }
         self.rebuild_rows();
         self.set_status(format!("Engine: {}", engine));
     }
@@ -1534,10 +1784,13 @@ impl App {
 
     fn zone_add(&mut self) {
         let mut zones = self.zones();
-        let id = format!("zone{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() % 100000)
-            .unwrap_or(0));
+        let id = format!(
+            "zone{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() % 100000)
+                .unwrap_or(0)
+        );
         zones.push(json!({
             "id": id, "align": "start", "unify": false,
             "zoneBg": "", "zoneBgSolid": false,
@@ -1556,9 +1809,10 @@ impl App {
             if let Some(mods) = z.get("modules").and_then(Value::as_array) {
                 for m in mods {
                     if m.get("enabled").and_then(Value::as_bool).unwrap_or(false)
-                        && let Some(id) = m.get("id").and_then(Value::as_str) {
-                            enabled_ids.push(id.to_string());
-                        }
+                        && let Some(id) = m.get("id").and_then(Value::as_str)
+                    {
+                        enabled_ids.push(id.to_string());
+                    }
                 }
             }
         }
@@ -1649,11 +1903,12 @@ impl App {
             ]
         });
         if let (Some(dst), Value::Object(src)) = (self.settings.data.get_mut("bar"), default)
-            && let Some(dst) = dst.as_object_mut() {
-                for (k, v) in src {
-                    dst.insert(k, v);
-                }
+            && let Some(dst) = dst.as_object_mut()
+        {
+            for (k, v) in src {
+                dst.insert(k, v);
             }
+        }
         let _ = self.settings.write();
         self.set_status("Bar reset to defaults");
         self.refresh_page_state();
@@ -1663,8 +1918,11 @@ impl App {
         let mut zones = self.zones();
         let Some(z) = zones.get_mut(zone) else { return };
         const ALIGNS: [&str; 3] = ["start", "center", "end"];
-        const ROLES: [&str; 9] = ["surface1", "surface0", "text", "red", "blue", "green", "yellow", "mauve", "teal"];
-        let get_str = |z: &Value, k: &str| z.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        const ROLES: [&str; 9] = [
+            "surface1", "surface0", "text", "red", "blue", "green", "yellow", "mauve", "teal",
+        ];
+        let get_str =
+            |z: &Value, k: &str| z.get(k).and_then(Value::as_str).unwrap_or("").to_string();
         match field {
             0 => {
                 let cur = get_str(z, "align");
@@ -1687,7 +1945,10 @@ impl App {
                 z["zoneBg"] = json!(new);
             }
             4 => {
-                let cur = z.get("zoneBgSolid").and_then(Value::as_bool).unwrap_or(false);
+                let cur = z
+                    .get("zoneBgSolid")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
                 z["zoneBgSolid"] = json!(!cur);
             }
             5 => {
@@ -1725,7 +1986,11 @@ impl App {
             .into_iter()
             .filter(|m| m.get("enabled").and_then(Value::as_bool).unwrap_or(false))
             .collect();
-        if let Some(first) = zones.first_mut().and_then(|z| z.get_mut("modules")).and_then(Value::as_array_mut) {
+        if let Some(first) = zones
+            .first_mut()
+            .and_then(|z| z.get_mut("modules"))
+            .and_then(Value::as_array_mut)
+        {
             for m in orphans {
                 first.push(m);
             }
@@ -1774,18 +2039,35 @@ impl App {
         }
         let new_idx = idx as i32 + delta;
         if new_idx >= 0 && (new_idx as usize) < list_len {
-            let list = zones[zone].get_mut("modules").unwrap().as_array_mut().unwrap();
+            let list = zones[zone]
+                .get_mut("modules")
+                .unwrap()
+                .as_array_mut()
+                .unwrap();
             list.swap(idx, new_idx as usize);
         } else if zone_count > 1 {
-            zones[zone].get_mut("modules").unwrap().as_array_mut().unwrap().remove(idx);
+            zones[zone]
+                .get_mut("modules")
+                .unwrap()
+                .as_array_mut()
+                .unwrap()
+                .remove(idx);
             let target = if delta > 0 {
                 (zone + 1) % zone_count
             } else {
                 (zone + zone_count - 1) % zone_count
             };
             let insert_at = if delta > 0 { 0 } else { usize::MAX };
-            let list = zones[target].get_mut("modules").unwrap().as_array_mut().unwrap();
-            let pos = if insert_at == usize::MAX { list.len() } else { insert_at };
+            let list = zones[target]
+                .get_mut("modules")
+                .unwrap()
+                .as_array_mut()
+                .unwrap();
+            let pos = if insert_at == usize::MAX {
+                list.len()
+            } else {
+                insert_at
+            };
             list.insert(pos, module);
         }
         self.set_zones(zones);
@@ -1821,10 +2103,7 @@ impl App {
         // write both (normalize once at the end)
         self.set_classic_items_raw(target, dst);
         self.set_classic_items_raw(sec, src);
-        self.set_status(format!(
-            "Moved to {}",
-            classic::SECTIONS[target]
-        ));
+        self.set_status(format!("Moved to {}", classic::SECTIONS[target]));
         self.rebuild_rows();
     }
 
@@ -1867,7 +2146,9 @@ impl App {
         let mut items = items;
         items.splice(
             idx..=idx + 1,
-            [Value::Array(members.into_iter().map(Value::String).collect())],
+            [Value::Array(
+                members.into_iter().map(Value::String).collect(),
+            )],
         );
         self.set_classic_items(sec, items);
         self.rebuild_rows();
@@ -1881,10 +2162,7 @@ impl App {
             return;
         };
         let mut items = items;
-        items.splice(
-            idx..=idx,
-            group.into_iter().map(Value::String),
-        );
+        items.splice(idx..=idx, group.into_iter().map(Value::String));
         self.set_classic_items(sec, items);
         self.rebuild_rows();
     }
@@ -1905,7 +2183,9 @@ impl App {
     }
 
     fn palette_select(&mut self, idx: usize) {
-        let Some(entry) = self.palettes.get(idx).cloned() else { return };
+        let Some(entry) = self.palettes.get(idx).cloned() else {
+            return;
+        };
         self.write_path(&p("bar.palette"), Value::String(entry.slug.clone()));
         self.set_status(format!("Palette: {}", entry.name));
     }
@@ -1937,10 +2217,14 @@ impl App {
     }
 
     fn palette_delete(&mut self) {
-        let Some(slug) = self.palette.as_ref().map(|p| p.slug.clone()) else { return };
+        let Some(slug) = self.palette.as_ref().map(|p| p.slug.clone()) else {
+            return;
+        };
         match palette::delete(&slug) {
             Ok(()) => {
-                let _ = self.settings.set(&["bar", "palette"], Value::String("x".into()));
+                let _ = self
+                    .settings
+                    .set(&["bar", "palette"], Value::String("x".into()));
                 self.reload_palette();
                 self.set_status("Palette deleted");
             }
@@ -1955,7 +2239,11 @@ impl App {
     }
 
     fn mirror_options(&self, mon: usize) -> Vec<String> {
-        let name = self.monitors.get(mon).map(|m| m.name.clone()).unwrap_or_default();
+        let name = self
+            .monitors
+            .get(mon)
+            .map(|m| m.name.clone())
+            .unwrap_or_default();
         std::iter::once("none".to_string())
             .chain(
                 self.monitors
@@ -1969,13 +2257,17 @@ impl App {
     fn monitor_adjust(&mut self, mon: usize, field: usize, delta: i32) {
         if field == 7 {
             let options = self.mirror_options(mon);
-            let Some(m) = self.monitors.get_mut(mon) else { return };
+            let Some(m) = self.monitors.get_mut(mon) else {
+                return;
+            };
             let pos = options.iter().position(|o| o == &m.mirror).unwrap_or(0) as i32;
             let new = (pos + delta).rem_euclid(options.len() as i32) as usize;
             m.mirror = options[new].clone();
             return;
         }
-        let Some(m) = self.monitors.get_mut(mon) else { return };
+        let Some(m) = self.monitors.get_mut(mon) else {
+            return;
+        };
         match field {
             0 => m.disabled = !m.disabled,
             1 => {
@@ -2039,7 +2331,9 @@ impl App {
             }
             return;
         }
-        let Some(m) = self.monitors.get_mut(mon) else { return };
+        let Some(m) = self.monitors.get_mut(mon) else {
+            return;
+        };
         match field {
             1 => {
                 if let Some(mode) = m.modes.get(idx) {
@@ -2081,45 +2375,73 @@ impl App {
         }
     }
 
-
     fn monitor_field_options(&self, mon: usize, field: usize) -> Vec<Opt> {
-        let Some(m) = self.monitors.get(mon) else { return Vec::new() };
+        let Some(m) = self.monitors.get(mon) else {
+            return Vec::new();
+        };
         match field {
             1 => m
                 .modes
                 .iter()
                 .filter(|x| (x.w, x.h) != (0, 0))
-                .map(|x| Opt { label: x.label.clone(), value: String::new() })
+                .map(|x| Opt {
+                    label: x.label.clone(),
+                    value: String::new(),
+                })
                 .collect(),
             2 => {
                 let base = (m.w, m.h);
                 m.modes
                     .iter()
                     .filter(|x| (x.w, x.h) == base)
-                    .map(|x| Opt { label: format!("{} Hz", x.rate.round() as u32), value: String::new() })
+                    .map(|x| Opt {
+                        label: format!("{} Hz", x.rate.round() as u32),
+                        value: String::new(),
+                    })
                     .collect()
             }
             3 => ["0°", "90°", "180°", "270°"]
                 .iter()
-                .map(|l| Opt { label: (*l).into(), value: String::new() })
+                .map(|l| Opt {
+                    label: (*l).into(),
+                    value: String::new(),
+                })
                 .collect(),
             4 => ["Off", "On", "Fullscreen"]
                 .iter()
-                .map(|l| Opt { label: (*l).into(), value: String::new() })
+                .map(|l| Opt {
+                    label: (*l).into(),
+                    value: String::new(),
+                })
                 .collect(),
-            5 => ["8-bit", "10-bit"].iter().map(|l| Opt { label: (*l).into(), value: String::new() }).collect(),
+            5 => ["8-bit", "10-bit"]
+                .iter()
+                .map(|l| Opt {
+                    label: (*l).into(),
+                    value: String::new(),
+                })
+                .collect(),
             6 => ["Auto", "sRGB", "Wide", "HDR", "EDID"]
                 .iter()
-                .map(|l| Opt { label: (*l).into(), value: String::new() })
+                .map(|l| Opt {
+                    label: (*l).into(),
+                    value: String::new(),
+                })
                 .collect(),
-            7 => std::iter::once(Opt { label: "None".into(), value: String::new() })
-                .chain(
-                    self.monitors
-                        .iter()
-                        .filter(|o| o.name != m.name)
-                        .map(|o| Opt { label: o.name.clone(), value: String::new() }),
-                )
-                .collect(),
+            7 => std::iter::once(Opt {
+                label: "None".into(),
+                value: String::new(),
+            })
+            .chain(
+                self.monitors
+                    .iter()
+                    .filter(|o| o.name != m.name)
+                    .map(|o| Opt {
+                        label: o.name.clone(),
+                        value: String::new(),
+                    }),
+            )
+            .collect(),
             _ => Vec::new(),
         }
     }
@@ -2149,7 +2471,8 @@ impl App {
         };
         if mode.is_empty() {
             self.vstate.insert("gpu".into(), String::new());
-            self.infos.insert("gpu.mode".into(), "envycontrol not available".into());
+            self.infos
+                .insert("gpu.mode".into(), "envycontrol not available".into());
         } else {
             self.vstate.insert("gpu".into(), mode.to_string());
             self.infos.insert("gpu.mode".into(), mode.to_string());
@@ -2175,7 +2498,8 @@ impl App {
                 "d_idle" => self.refresh_idle(),
                 "d_notifications" => {
                     let on = self.dnd_on();
-                    self.infos.insert("dnd".into(), if on { "on".into() } else { "off".into() });
+                    self.infos
+                        .insert("dnd".into(), if on { "on".into() } else { "off".into() });
                 }
                 _ => {}
             },
@@ -2190,7 +2514,11 @@ impl App {
         let mode = std::fs::read_to_string(&path)
             .ok()
             .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-            .and_then(|v| v.get("idleMode").and_then(Value::as_str).map(str::to_string))
+            .and_then(|v| {
+                v.get("idleMode")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
             .unwrap_or_else(|| "normal".into());
         self.vstate.insert("idle".into(), mode.clone());
         self.infos.insert("idle.mode".into(), mode);
@@ -2203,7 +2531,8 @@ impl App {
         ));
         for line in out.lines() {
             if let Some((k, v)) = line.split_once('=') {
-                self.infos.insert(format!("sys.{}", k.trim()), v.trim().to_string());
+                self.infos
+                    .insert(format!("sys.{}", k.trim()), v.trim().to_string());
             }
         }
     }
@@ -2212,7 +2541,11 @@ impl App {
 
     pub fn commit_edit(&mut self, target: EditTarget, buf: String) {
         match target {
-            EditTarget::Control { path, numeric, label } => {
+            EditTarget::Control {
+                path,
+                numeric,
+                label,
+            } => {
                 if numeric {
                     match buf.trim().parse::<f64>() {
                         Ok(n) => {
@@ -2244,13 +2577,19 @@ impl App {
                 }
             }
             EditTarget::PaletteSlot { slot, slug } => {
-                let Some(p) = self.palette.as_mut() else { return };
+                let Some(p) = self.palette.as_mut() else {
+                    return;
+                };
                 if p.slug != slug {
                     return;
                 }
                 match p.set_slot(slot, buf.trim()) {
                     Ok(()) => {
-                        self.set_status(format!("{} = {}", PaletteFile::slot_label(slot), buf.trim()));
+                        self.set_status(format!(
+                            "{} = {}",
+                            PaletteFile::slot_label(slot),
+                            buf.trim()
+                        ));
                         palette::sync_theme();
                     }
                     Err(_) => self.set_status("Invalid hex (#rrggbb)"),
@@ -2277,7 +2616,10 @@ impl App {
     // ───────────────────────── input mode handlers ─────────────────────────
 
     pub fn begin_confirm(&mut self, action: Action, msg: &str) {
-        self.mode = Mode::Confirm { action, msg: msg.to_string() };
+        self.mode = Mode::Confirm {
+            action,
+            msg: msg.to_string(),
+        };
     }
 
     pub fn confirm_yes(&mut self) {
@@ -2336,7 +2678,9 @@ impl App {
 
     pub fn tick(&mut self) {
         let now = Instant::now();
-        if now.duration_since(self.last_status_clear) > Duration::from_secs(5) && !self.status.is_empty() {
+        if now.duration_since(self.last_status_clear) > Duration::from_secs(5)
+            && !self.status.is_empty()
+        {
             self.status.clear();
         }
         if now.duration_since(self.last_check) > Duration::from_millis(800) {
@@ -2348,13 +2692,14 @@ impl App {
                         .get_str(&["barEngine"])
                         .unwrap_or_else(|| "bar".into());
                     if let Some(gate) = self.current_page().engine
-                        && gate != self.engine {
-                            self.page = self
-                                .pages
-                                .iter()
-                                .position(|p| p.id == "d_engine")
-                                .unwrap_or(0);
-                        }
+                        && gate != self.engine
+                    {
+                        self.page = self
+                            .pages
+                            .iter()
+                            .position(|p| p.id == "d_engine")
+                            .unwrap_or(0);
+                    }
                     self.rebuild_rows();
                 }
                 Ok(false) => {}
@@ -2395,13 +2740,22 @@ impl App {
     }
 
     fn persist_input(&mut self) {
-        let sens = self.settings.get_f64(&["input", "sensitivity"]).unwrap_or(0.0);
+        let sens = self
+            .settings
+            .get_f64(&["input", "sensitivity"])
+            .unwrap_or(0.0);
         let profile = self
             .settings
             .get_str(&["input", "accelProfile"])
             .unwrap_or_else(|| "flat".into());
-        let tap = self.settings.get_bool(&["input", "tapToClick"]).unwrap_or(true);
-        let natural = self.settings.get_bool(&["input", "naturalScroll"]).unwrap_or(true);
+        let tap = self
+            .settings
+            .get_bool(&["input", "tapToClick"])
+            .unwrap_or(true);
+        let natural = self
+            .settings
+            .get_bool(&["input", "naturalScroll"])
+            .unwrap_or(true);
         let dwt = self
             .settings
             .get_bool(&["input", "disableWhileTyping"])
@@ -2422,8 +2776,14 @@ impl App {
     }
 
     fn persist_animations(&mut self) {
-        let enabled = self.settings.get_bool(&["animations", "enabled"]).unwrap_or(true);
-        let speed = self.settings.get_f64(&["animations", "speed"]).unwrap_or(1.0);
+        let enabled = self
+            .settings
+            .get_bool(&["animations", "enabled"])
+            .unwrap_or(true);
+        let speed = self
+            .settings
+            .get_f64(&["animations", "speed"])
+            .unwrap_or(1.0);
         let script = format!(
             "{}/ui/bar/editor/persist-hypr.sh",
             actions::quickshell_dir()
@@ -2445,25 +2805,55 @@ impl App {
     // ───────────────────────── search palette ─────────────────────────
 
     pub fn open_search(&mut self) {
+        self.open_search_with("");
+    }
+
+    pub fn open_search_with(&mut self, query: &str) {
         self.search_index = self.build_search_index();
         self.mode = Mode::Search(SearchState {
-            query: String::new(),
-            cursor: 0,
+            query: query.to_string(),
+            cursor: query.chars().count(),
             results: self.search_index.clone(),
             sel: 0,
         });
+        if !query.is_empty() {
+            self.search_refresh();
+        }
     }
 
     fn build_search_index(&self) -> Vec<SearchEntry> {
         let mut out: Vec<SearchEntry> = Vec::new();
         let mut push = |text: String, context: String, target: SearchTarget| {
-            out.push(SearchEntry { text, context, target });
+            out.push(SearchEntry {
+                text,
+                context,
+                target,
+            });
         };
-        push("Reload settings.json".into(), "Command".into(), SearchTarget::Command(SearchCommand::Reload));
-        push("Quit xturing".into(), "Command".into(), SearchTarget::Command(SearchCommand::Quit));
-        push("Help".into(), "Command".into(), SearchTarget::Command(SearchCommand::Help));
         push(
-            format!("Switch engine ({})", if self.engine == "bar" { "bar -> classic" } else { "classic -> bar" }),
+            "Reload settings.json".into(),
+            "Command".into(),
+            SearchTarget::Command(SearchCommand::Reload),
+        );
+        push(
+            "Quit xturing".into(),
+            "Command".into(),
+            SearchTarget::Command(SearchCommand::Quit),
+        );
+        push(
+            "Help".into(),
+            "Command".into(),
+            SearchTarget::Command(SearchCommand::Help),
+        );
+        push(
+            format!(
+                "Switch engine ({})",
+                if self.engine == "bar" {
+                    "bar -> classic"
+                } else {
+                    "classic -> bar"
+                }
+            ),
             "Command".into(),
             SearchTarget::Command(SearchCommand::ToggleEngine),
         );
@@ -2494,7 +2884,38 @@ impl App {
         if let Some(zones_page) = self.pages.iter().position(|p| p.id == "d_zones") {
             for (z, zone) in self.zones().iter().enumerate() {
                 let id = zone.get("id").and_then(Value::as_str).unwrap_or("zone");
-                push(format!("Zone {}", id), "Bar › Zones".into(), SearchTarget::Zone { page: zones_page, zone: z });
+                push(
+                    format!("Zone {}", id),
+                    "Bar › Zones".into(),
+                    SearchTarget::Zone {
+                        page: zones_page,
+                        zone: z,
+                    },
+                );
+                if let Some(modules) = zone.get("modules").and_then(Value::as_array) {
+                    for (i, module) in modules.iter().enumerate() {
+                        let Some(module_id) = module.get("id").and_then(Value::as_str) else {
+                            continue;
+                        };
+                        let enabled = module
+                            .get("enabled")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false);
+                        push(
+                            format!("Module {}", module_id),
+                            format!(
+                                "Bar › Zones · {} ({})",
+                                id,
+                                if enabled { "on" } else { "off" }
+                            ),
+                            SearchTarget::ZoneModule {
+                                page: zones_page,
+                                zone: z,
+                                index: i,
+                            },
+                        );
+                    }
+                }
             }
         }
         if let Some(pal_page) = self.pages.iter().position(|p| p.id == "d_palette") {
@@ -2502,8 +2923,23 @@ impl App {
                 push(
                     entry.name.clone(),
                     format!("Theme › Palette · {}", entry.category),
-                    SearchTarget::PaletteItem { page: pal_page, index: i },
+                    SearchTarget::PaletteItem {
+                        page: pal_page,
+                        index: i,
+                    },
                 );
+            }
+            if let Some(active) = &self.palette {
+                for slot in 0..18 {
+                    push(
+                        format!("{} {}", PaletteFile::slot_label(slot), active.slot(slot)),
+                        format!("Theme › Palette · {} (active)", active.slug),
+                        SearchTarget::PaletteSlot {
+                            page: pal_page,
+                            slot,
+                        },
+                    );
+                }
             }
         }
         if let Some(kb_page) = self.pages.iter().position(|p| p.id == "s_keyboard") {
@@ -2517,7 +2953,22 @@ impl App {
                 push(
                     format!("{}  {}", combo.trim(), detail),
                     "Shell › Keyboard".into(),
-                    SearchTarget::Keybind { page: kb_page, index: i },
+                    SearchTarget::Keybind {
+                        page: kb_page,
+                        index: i,
+                    },
+                );
+            }
+        }
+        if let Some(mon_page) = self.pages.iter().position(|p| p.id == "s_monitors") {
+            for (m, monitor) in self.monitors.iter().enumerate() {
+                push(
+                    monitor.name.clone(),
+                    format!("Shell › Monitors · {}", monitor.description),
+                    SearchTarget::Monitor {
+                        page: mon_page,
+                        monitor: m,
+                    },
                 );
             }
         }
@@ -2527,7 +2978,14 @@ impl App {
                 if cmd.trim().is_empty() {
                     continue;
                 }
-                push(cmd.to_string(), "Shell › Startup".into(), SearchTarget::Startup { page: st_page, index: i });
+                push(
+                    cmd.to_string(),
+                    "Shell › Startup".into(),
+                    SearchTarget::Startup {
+                        page: st_page,
+                        index: i,
+                    },
+                );
             }
         }
         out
@@ -2623,10 +3081,11 @@ impl App {
     pub fn search_backspace(&mut self) {
         if let Mode::Search(state) = &mut self.mode
             && state.cursor > 0
-                && let Some((byte, _)) = state.query.char_indices().nth(state.cursor - 1) {
-                    state.query.remove(byte);
-                    state.cursor -= 1;
-                }
+            && let Some((byte, _)) = state.query.char_indices().nth(state.cursor - 1)
+        {
+            state.query.remove(byte);
+            state.cursor -= 1;
+        }
         self.search_refresh();
     }
 
@@ -2660,7 +3119,11 @@ impl App {
             SearchTarget::Command(SearchCommand::Quit) => self.quit = true,
             SearchTarget::Command(SearchCommand::Help) => self.mode = Mode::Help,
             SearchTarget::Command(SearchCommand::ToggleEngine) => {
-                let next = if self.engine == "bar" { "classic" } else { "bar" };
+                let next = if self.engine == "bar" {
+                    "classic"
+                } else {
+                    "bar"
+                };
                 self.set_engine(next);
             }
             SearchTarget::Page(page) => {
@@ -2674,8 +3137,25 @@ impl App {
             SearchTarget::Zone { page, zone } => {
                 self.goto_row(page, |row| matches!(row, Row::ZoneHeader(z) if *z == zone));
             }
+            SearchTarget::ZoneModule { page, zone, index } => {
+                self.goto_row(page, |row| {
+                    matches!(row, Row::ZoneModule { zone: z, idx: i } if *z == zone && *i == index)
+                });
+            }
+            SearchTarget::PaletteSlot { page, slot } => {
+                self.goto_row(page, |row| matches!(row, Row::PaletteSlot(s) if *s == slot));
+            }
+            SearchTarget::Monitor { page, monitor } => {
+                self.goto_row(
+                    page,
+                    |row| matches!(row, Row::MonitorField { mon: m, field: 0 } if *m == monitor),
+                );
+            }
             SearchTarget::PaletteItem { page, index } => {
-                self.goto_row(page, |row| matches!(row, Row::PaletteItem(i) if *i == index));
+                self.goto_row(
+                    page,
+                    |row| matches!(row, Row::PaletteItem(i) if *i == index),
+                );
             }
             SearchTarget::Keybind { page, index } => {
                 self.goto_row(page, |row| matches!(row, Row::Keybind(i) if *i == index));
@@ -2687,11 +3167,13 @@ impl App {
     }
 
     fn goto_row(&mut self, page: usize, predicate: impl Fn(&Row) -> bool) {
+        self.remember_selection();
         self.page = page;
         self.refresh_page_state();
         if let Some(idx) = self.rows.iter().position(predicate) {
             self.sel = idx;
         }
+        self.remember_selection();
     }
 
     // ───────────────────────── mouse / touch ─────────────────────────
@@ -2702,6 +3184,7 @@ impl App {
                 let now = Instant::now();
                 let double = matches!(self.last_tap, Some((row, at)) if row == *i && now.duration_since(at) < Duration::from_millis(450));
                 self.sel = (*i).min(self.rows.len().saturating_sub(1));
+                self.remember_selection();
                 if double {
                     self.last_tap = None;
                     self.activate_row();
@@ -2713,9 +3196,11 @@ impl App {
                 self.adjust_control(*ctrl, *delta);
             }
             HitAction::GotoPage(page) => {
+                self.remember_selection();
                 self.page = *page;
                 self.sel = 0;
                 self.refresh_page_state();
+                self.restore_selection();
             }
             HitAction::SearchSelect(i) => {
                 if let Mode::Search(state) = &mut self.mode {
@@ -2817,7 +3302,7 @@ fn hypr_controls() -> Vec<Control> {
                 unit: "",
             },
             path: vec!["__hypr__".to_string(), (*key).to_string()],
-            help: "Preview en vivo con hyprctl eval; persiste en config/window-effects.lua al salir"
+            help: "Live preview with hyprctl eval; persists to config/window-effects.lua on exit"
                 .to_string(),
             visible: None,
         });
@@ -2826,18 +3311,18 @@ fn hypr_controls() -> Vec<Control> {
         label: "Reset effects".into(),
         kind: Kind::Action(Action::HyprReset),
         path: Vec::new(),
-        help: "Vuelve a los valores por defecto (no toca gaps ni border width)".into(),
+        help: "Back to defaults (does not touch gaps or border width)".into(),
         visible: None,
     });
     controls.push(Control {
         label: "Refresh".into(),
         kind: Kind::Action(Action::HyprRefresh),
         path: Vec::new(),
-        help: "Relee los valores vivos con hyprctl".into(),
+        help: "Re-read the live values with hyprctl".into(),
         visible: None,
     });
     // Window borders (same block as Bar > Style)
-    let borders = catalog::border_sections("bordes de ventana");
+    let borders = catalog::border_sections();
     for c in flatten(&borders) {
         controls.push(c);
     }
@@ -2850,21 +3335,21 @@ fn zones_actions() -> Vec<Control> {
             label: "Add zone".into(),
             kind: Kind::Action(Action::ZoneAdd),
             path: Vec::new(),
-            help: "Añade una zona nueva (align start)".into(),
+            help: "Add a new zone (align start)".into(),
             visible: None,
         },
         Control {
             label: "Center all".into(),
             kind: Kind::Action(Action::ZonesCenterAll),
             path: Vec::new(),
-            help: "Mueve todos los módulos activos al frente de la primera zona center".into(),
+            help: "Move every enabled module to the front of the first center zone".into(),
             visible: None,
         },
         Control {
             label: "Default".into(),
             kind: Kind::Action(Action::ZonesDefault),
             path: Vec::new(),
-            help: "Resetea el bar completo a valores de fábrica".into(),
+            help: "Reset the whole bar to factory values".into(),
             visible: None,
         },
     ]
@@ -2876,14 +3361,14 @@ fn monitors_actions() -> Vec<Control> {
             label: "Apply & save permanently".into(),
             kind: Kind::Action(Action::MonitorsApply),
             path: Vec::new(),
-            help: "Aplica la config y la guarda en display-config".into(),
+            help: "Apply and save the layout to display-config".into(),
             visible: None,
         },
         Control {
             label: "Reset to auto".into(),
             kind: Kind::Action(Action::MonitorsReset),
             path: Vec::new(),
-            help: "Borra display-config y vuelve a auto".into(),
+            help: "Delete display-config and go back to auto".into(),
             visible: None,
         },
         Control {
@@ -2916,7 +3401,7 @@ fn guide_actions() -> Vec<Control> {
             label: "Updates".into(),
             kind: Kind::Action(Action::OpenWidget("updater".into())),
             path: Vec::new(),
-            help: "Abre el popup de actualizaciones".into(),
+            help: "Open the updater popup".into(),
             visible: None,
         },
         Control {
@@ -2928,7 +3413,9 @@ fn guide_actions() -> Vec<Control> {
         },
         Control {
             label: "Report issue".into(),
-            kind: Kind::Action(Action::OpenUrl("https://github.com/equisdots/shell/issues/new".into())),
+            kind: Kind::Action(Action::OpenUrl(
+                "https://github.com/equisdots/shell/issues/new".into(),
+            )),
             path: Vec::new(),
             help: String::new(),
             visible: None,
@@ -2942,28 +3429,28 @@ fn palette_actions() -> Vec<Control> {
             label: "Filter (press Enter to edit)".into(),
             kind: Kind::Action(Action::PaletteFilterEdit),
             path: Vec::new(),
-            help: "Escribe para filtrar; vacío = todas".into(),
+            help: "Type to filter; empty = all".into(),
             visible: None,
         },
         Control {
             label: "Reset active palette".into(),
             kind: Kind::Action(Action::PaletteReset),
             path: Vec::new(),
-            help: "Restaura desde el backup de sesión si existe".into(),
+            help: "Restore from the session backup if present".into(),
             visible: None,
         },
         Control {
             label: "New palette".into(),
             kind: Kind::Action(Action::PaletteCreate),
             path: Vec::new(),
-            help: "Crea una paleta user a partir de la activa".into(),
+            help: "Create a user palette from the active one".into(),
             visible: None,
         },
         Control {
             label: "Delete active palette".into(),
             kind: Kind::Action(Action::PaletteDelete),
             path: Vec::new(),
-            help: "No permite borrar 'x'".into(),
+            help: "'x' cannot be deleted".into(),
             visible: None,
         },
     ]
@@ -2988,7 +3475,13 @@ fn flatten(sections: &[catalog::Section]) -> Vec<Control> {
 fn clone_kind(kind: &Kind) -> Kind {
     match kind {
         Kind::Toggle => Kind::Toggle,
-        Kind::Stepper { step, min, max, decimals, unit } => Kind::Stepper {
+        Kind::Stepper {
+            step,
+            min,
+            max,
+            decimals,
+            unit,
+        } => Kind::Stepper {
             step: *step,
             min: *min,
             max: *max,
@@ -2996,7 +3489,11 @@ fn clone_kind(kind: &Kind) -> Kind {
             unit,
         },
         Kind::Options(opts) => Kind::Options(opts.clone()),
-        Kind::StateOptions { state_key, options, action } => Kind::StateOptions {
+        Kind::StateOptions {
+            state_key,
+            options,
+            action,
+        } => Kind::StateOptions {
             state_key: state_key.clone(),
             options: options.clone(),
             action: action.clone(),
@@ -3029,6 +3526,66 @@ fn value_to_string(v: Value) -> String {
     }
 }
 
+/// Map a crossterm key press to Hyprland (mods, key) strings for the
+/// keybind recorder. Returns None for modifier-only presses.
+pub fn shortcut_fields(
+    code: crossterm::event::KeyCode,
+    modifiers: crossterm::event::KeyModifiers,
+) -> Option<(String, String)> {
+    use crossterm::event::{KeyCode, KeyModifiers};
+    if matches!(code, KeyCode::Modifier(_)) {
+        return None;
+    }
+    let key = match code {
+        KeyCode::Char(' ') => "Space".to_string(),
+        KeyCode::Char(c) => match c {
+            '.' => "period".to_string(),
+            ',' => "comma".to_string(),
+            '\'' => "apostrophe".to_string(),
+            ';' => "semicolon".to_string(),
+            '/' => "slash".to_string(),
+            '\\' => "backslash".to_string(),
+            '`' => "grave".to_string(),
+            '-' => "minus".to_string(),
+            '=' => "equal".to_string(),
+            '[' => "bracketleft".to_string(),
+            ']' => "bracketright".to_string(),
+            other => other.to_uppercase().to_string(),
+        },
+        KeyCode::Enter => "Return".to_string(),
+        KeyCode::Esc => "Escape".to_string(),
+        KeyCode::Backspace => "BackSpace".to_string(),
+        KeyCode::Delete => "Delete".to_string(),
+        KeyCode::Tab | KeyCode::BackTab => "Tab".to_string(),
+        KeyCode::Left => "left".to_string(),
+        KeyCode::Right => "right".to_string(),
+        KeyCode::Up => "up".to_string(),
+        KeyCode::Down => "down".to_string(),
+        KeyCode::Home => "Home".to_string(),
+        KeyCode::End => "End".to_string(),
+        KeyCode::PageUp => "Page_Up".to_string(),
+        KeyCode::PageDown => "Page_Down".to_string(),
+        KeyCode::Insert => "Insert".to_string(),
+        KeyCode::PrintScreen => "Print".to_string(),
+        KeyCode::F(n) => format!("F{}", n),
+        _ => return None,
+    };
+    let mut mods: Vec<&str> = Vec::new();
+    if modifiers.contains(KeyModifiers::SUPER) {
+        mods.push("SUPER");
+    }
+    if modifiers.contains(KeyModifiers::CONTROL) {
+        mods.push("CTRL");
+    }
+    if modifiers.contains(KeyModifiers::ALT) {
+        mods.push("ALT");
+    }
+    if modifiers.contains(KeyModifiers::SHIFT) {
+        mods.push("SHIFT");
+    }
+    Some((mods.join(" "), key))
+}
+
 pub fn fmt_num(v: f64) -> String {
     if v.fract() == 0.0 {
         format!("{}", v as i64)
@@ -3042,7 +3599,11 @@ fn fuzzy_score(query: &str, text: &str) -> Option<i32> {
     if query.trim().is_empty() {
         return Some(0);
     }
-    let needle: Vec<char> = query.to_lowercase().chars().filter(|c| !c.is_whitespace()).collect();
+    let needle: Vec<char> = query
+        .to_lowercase()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
     let hay: Vec<char> = text.to_lowercase().chars().collect();
     let mut qi = 0usize;
     let mut score = 0i32;
@@ -3071,9 +3632,7 @@ fn json_eq_loose(got: Option<&Value>, want: &Value) -> bool {
     match (got, want) {
         (Some(Value::String(a)), Value::String(b)) => a == b,
         (Some(Value::Bool(a)), Value::Bool(b)) => a == b,
-        (Some(Value::String(a)), Value::Number(n)) => {
-            a.parse::<f64>().ok() == n.as_f64()
-        }
+        (Some(Value::String(a)), Value::Number(n)) => a.parse::<f64>().ok() == n.as_f64(),
         (Some(a), Value::Number(_)) => a.as_f64() == want.as_f64(),
         (Some(a), b) => a == b,
         _ => false,
@@ -3086,9 +3645,14 @@ fn lua_dispatcher(dispatcher: &str, command: &str) -> Option<String> {
     Some(match dispatcher {
         "exec" | "exec-once" => format!("hl.dsp.exec_cmd({})", json_str(command)),
         "workspace" => format!("hl.dsp.focus({{ workspace = {} }})", json_str(command)),
-        "movetoworkspace" => format!("hl.dsp.window.move({{ workspace = {} }})", json_str(command)),
+        "movetoworkspace" => format!(
+            "hl.dsp.window.move({{ workspace = {} }})",
+            json_str(command)
+        ),
         "movewindow" => match command {
-            "l" | "r" | "u" | "d" => format!("hl.dsp.window.move({{ direction = \"{}\" }})", command),
+            "l" | "r" | "u" | "d" => {
+                format!("hl.dsp.window.move({{ direction = \"{}\" }})", command)
+            }
             _ => format!("hl.dsp.window.move({{ monitor = {} }})", json_str(command)),
         },
         "movefocus" => {
@@ -3099,10 +3663,15 @@ fn lua_dispatcher(dispatcher: &str, command: &str) -> Option<String> {
             format!("hl.dsp.focus({{ direction = \"{}\" }})", dir)
         }
         "resizeactive" => {
-            let parts: Vec<&str> = command.split(|c: char| c.is_whitespace() || c == ',').collect();
+            let parts: Vec<&str> = command
+                .split(|c: char| c.is_whitespace() || c == ',')
+                .collect();
             let x: i64 = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
             let y: i64 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
-            format!("hl.dsp.window.resize({{ x = {}, y = {}, relative = true }})", x, y)
+            format!(
+                "hl.dsp.window.resize({{ x = {}, y = {}, relative = true }})",
+                x, y
+            )
         }
         "togglefloating" => "hl.dsp.window.float({ action = \"toggle\" })".to_string(),
         "killactive" => "hl.dsp.window.kill()".to_string(),
@@ -3114,7 +3683,10 @@ pub fn dnd_dir() -> String {
     if let Ok(dir) = std::env::var("QS_CACHE_DND") {
         return dir;
     }
-    format!("{}/.cache/quickshell/dnd", crate::settings::home().display())
+    format!(
+        "{}/.cache/quickshell/dnd",
+        crate::settings::home().display()
+    )
 }
 
 #[cfg(test)]
@@ -3128,11 +3700,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!(
-            "xturing-app-{}-{}",
-            std::process::id(),
-            unique
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("xturing-app-{}-{}", std::process::id(), unique));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("settings.json");
         fs::write(&path, json).unwrap();
@@ -3172,7 +3741,9 @@ mod tests {
 
     #[test]
     fn search_commands_and_dynamic_entries() {
-        let (mut app, _) = sandbox(r#"{"keybinds":[{"mods":"SUPER","key":"Q","dispatcher":"exec","command":"kitty"}],"bar":{"zones":[{"id":"start","align":"start","modules":[]}]}}"#);
+        let (mut app, _) = sandbox(
+            r#"{"keybinds":[{"mods":"SUPER","key":"Q","dispatcher":"exec","command":"kitty"}],"bar":{"zones":[{"id":"start","align":"start","modules":[]}]}}"#,
+        );
         app.open_search();
         let has = |app: &App, text: &str| match &app.mode {
             Mode::Search(s) => s.results.iter().any(|r| r.text.contains(text)),
@@ -3192,11 +3763,122 @@ mod tests {
         app.apply_hit(&HitAction::Adjust { ctrl: 0, delta: 1 });
         assert_eq!(app.settings.get_f64(&["uiScale"]), Some(1.1));
         // double tap on a row activates it (select row then activate via hit twice)
-        let row = app.rows.iter().position(|r| matches!(r, Row::Control(0))).unwrap();
+        let row = app
+            .rows
+            .iter()
+            .position(|r| matches!(r, Row::Control(0)))
+            .unwrap();
         app.apply_hit(&HitAction::SelectRow(row));
         app.apply_hit(&HitAction::SelectRow(row));
         // UI Scale is a stepper: activation opens the edit mode
         assert!(matches!(app.mode, Mode::Edit { .. }));
+    }
+
+    #[test]
+    fn selection_memory_survives_page_round_trip() {
+        let (mut app, _) = sandbox(r#"{"barEngine":"bar"}"#);
+        app.page = app.pages.iter().position(|p| p.id == "s_general").unwrap();
+        app.refresh_page_state();
+        // pick a selectable row beyond the first
+        app.sel = app.rows.iter().rposition(|r| r.selectable()).unwrap();
+        let remembered = app.sel;
+        app.next_page(1);
+        assert_ne!(app.current_page().id, "s_general");
+        app.next_page(-1);
+        assert_eq!(app.current_page().id, "s_general");
+        assert_eq!(app.sel, remembered);
+    }
+
+    #[test]
+    fn arrows_wrap_across_pages() {
+        let (mut app, _) = sandbox(r#"{"barEngine":"bar"}"#);
+        app.page = 0;
+        app.refresh_page_state();
+        let first_page = app.current_page().id;
+        // keep pressing Down until the page changes
+        let mut guard = 0;
+        while app.current_page().id == first_page && guard < 500 {
+            app.move_selection(1);
+            guard += 1;
+        }
+        assert_ne!(
+            app.current_page().id,
+            first_page,
+            "Down did not cross to the next page"
+        );
+        assert_eq!(
+            Some(app.sel),
+            app.rows.iter().position(|r| r.selectable()),
+            "crossing down must land on the first selectable row"
+        );
+        // keep pressing Up until we are back on the first page
+        guard = 0;
+        while app.current_page().id != first_page && guard < 500 {
+            app.move_selection(-1);
+            guard += 1;
+        }
+        assert_eq!(app.current_page().id, first_page, "Up did not cross back");
+        assert_eq!(
+            Some(app.sel),
+            app.rows.iter().rposition(|r| r.selectable()),
+            "crossing up must land on the last selectable row"
+        );
+    }
+
+    #[test]
+    fn goto_page_id_opens_visible_pages() {
+        let (mut app, _) = sandbox(r#"{"barEngine":"bar"}"#);
+        assert!(app.goto_page_id("d_style"));
+        assert_eq!(app.current_page().id, "d_style");
+        // engine-gated page hidden while engine is bar? d_style is bar-only and visible
+        assert!(!app.goto_page_id("d_classic"));
+        app.run_action(Action::SetEngine, Some("classic".into()));
+        assert!(app.goto_page_id("d_classic"));
+    }
+
+    #[test]
+    fn search_reaches_zone_modules_and_pages() {
+        let (mut app, _) = sandbox(
+            r#"{"bar":{"zones":[{"id":"start","align":"start","modules":[{"id":"help","enabled":true},{"id":"volume","enabled":false}]}]}}"#,
+        );
+        app.open_search_with("module vol");
+        let results = match &app.mode {
+            Mode::Search(state) => state.results.clone(),
+            _ => panic!("search mode"),
+        };
+        assert!(results.iter().any(|r| r.text == "Module volume"));
+        assert!(results.iter().any(|r| r.context.contains("start")));
+    }
+
+    #[test]
+    fn shortcut_recorder_maps_hyprland_names() {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        assert_eq!(
+            shortcut_fields(
+                KeyCode::Char('x'),
+                KeyModifiers::SUPER | KeyModifiers::SHIFT
+            ),
+            Some(("SUPER SHIFT".into(), "X".into()))
+        );
+        assert_eq!(
+            shortcut_fields(KeyCode::Char('.'), KeyModifiers::SUPER),
+            Some(("SUPER".into(), "period".into()))
+        );
+        assert_eq!(
+            shortcut_fields(KeyCode::Enter, KeyModifiers::empty()),
+            Some((String::new(), "Return".into()))
+        );
+        assert_eq!(
+            shortcut_fields(KeyCode::F(5), KeyModifiers::ALT),
+            Some(("ALT".into(), "F5".into()))
+        );
+        assert_eq!(
+            shortcut_fields(
+                KeyCode::Modifier(crossterm::event::ModifierKeyCode::LeftShift),
+                KeyModifiers::SHIFT
+            ),
+            None
+        );
     }
 
     #[test]
@@ -3242,12 +3924,19 @@ mod tests {
             r#"{"barEngine":"bar","bar":{"position":"bottom","zones":[{"id":"start","align":"start","modules":[{"id":"help","enabled":true}]}]}}"#,
         );
         app.run_action(Action::SetEngine, Some("classic".into()));
-        assert_eq!(app.settings.get_str(&["barEngine"]).as_deref(), Some("classic"));
+        assert_eq!(
+            app.settings.get_str(&["barEngine"]).as_deref(),
+            Some("classic")
+        );
         assert_eq!(
             app.settings.get_str(&["classicbar", "position"]).as_deref(),
             Some("bottom")
         );
-        assert!(app.settings.get(&["classicbar", "modules", "left"]).is_some());
+        assert!(
+            app.settings
+                .get(&["classicbar", "modules", "left"])
+                .is_some()
+        );
         let visible = app.visible_page_indices();
         assert!(visible.iter().any(|&i| app.pages[i].id == "d_classic"));
         assert!(!visible.iter().any(|&i| app.pages[i].id == "d_style"));

@@ -2,6 +2,9 @@
 name = "xturing"
 version = "0.1.0"
 edition = "2024"
+description = "Terminal UI (ratatui) for the equisdots settings panel"
+license = "MIT"
+repository = "https://github.com/equisdots/xturing"
 
 [dependencies]
 anyhow = "1.0.104"
