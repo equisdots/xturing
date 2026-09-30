@@ -2,16 +2,16 @@
 //! chooser/confirm/form overlays and mouse hit registration.
 
 use crate::app::{
-    App, Hit, HitAction, Row, SearchState, KEYBIND_FIELDS, MONITOR_FIELDS, ZONE_FIELD_LABELS,
+    App, Hit, HitAction, KEYBIND_FIELDS, MONITOR_FIELDS, Row, SearchState, ZONE_FIELD_LABELS,
 };
 use crate::catalog::{Group, Kind};
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{
     Block, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
 };
-use ratatui::Frame;
 
 const ACCENT: Color = Color::Rgb(203, 166, 247);
 const DIM: Color = Color::DarkGray;
@@ -40,6 +40,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
         }
         crate::app::Mode::Confirm { msg, .. } => render_confirm(f, msg, area),
         crate::app::Mode::Form { kb, field } => render_form(f, app, *kb, *field, area),
+        crate::app::Mode::Record { kb } => render_record(f, app, *kb, area),
         crate::app::Mode::Help => render_help(f, area),
         crate::app::Mode::Search(state) => render_search(f, state, area, &mut hits),
         _ => {}
@@ -67,7 +68,7 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
         Span::styled(format!("[{}]", app.engine), Style::default().fg(ACCENT)),
     ]);
     let left_width = line_width(&left);
-    let right = " / buscar · click/doble-tap · rueda ";
+    let right = " / search · click/double-tap · wheel ";
     let mut spans = left.spans;
     let pad = (area.width as usize).saturating_sub(left_width + right.chars().count());
     spans.push(Span::raw(" ".repeat(pad)));
@@ -98,7 +99,11 @@ fn render_rail(f: &mut Frame, app: &App, area: Rect, hits: &mut Vec<Hit>) {
         y += 1;
         for p in pages {
             let selected = p.id == app.current_page().id;
-            let page_index = app.pages.iter().position(|other| other.id == p.id).unwrap_or(0);
+            let page_index = app
+                .pages
+                .iter()
+                .position(|other| other.id == p.id)
+                .unwrap_or(0);
             let marker = if selected { "▸" } else { " " };
             let style = if selected {
                 Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
@@ -154,29 +159,30 @@ fn render_content(f: &mut Frame, app: &App, area: Rect, hits: &mut Vec<Hit>) {
         });
         if let Row::Control(ctrl) = row
             && let Some(c) = app.controls.get(*ctrl)
-                && matches!(c.kind, Kind::Stepper { .. }) {
-                    let value = control_value_spans(app, *ctrl, selected);
-                    let value_width: usize = value.iter().map(span_width).sum();
-                    let x_value = inner.x + 2 + LABEL_WIDTH as u16 + 1;
-                    hits.push(Hit {
-                        y,
-                        x0: x_value,
-                        x1: x_value + 3,
-                        action: HitAction::Adjust {
-                            ctrl: *ctrl,
-                            delta: -1,
-                        },
-                    });
-                    hits.push(Hit {
-                        y,
-                        x0: x_value + 4 + value_width as u16,
-                        x1: x_value + 7 + value_width as u16,
-                        action: HitAction::Adjust {
-                            ctrl: *ctrl,
-                            delta: 1,
-                        },
-                    });
-                }
+            && matches!(c.kind, Kind::Stepper { .. })
+        {
+            let value = control_value_spans(app, *ctrl, selected);
+            let value_width: usize = value.iter().map(span_width).sum();
+            let x_value = inner.x + 2 + LABEL_WIDTH as u16 + 1;
+            hits.push(Hit {
+                y,
+                x0: x_value,
+                x1: x_value + 3,
+                action: HitAction::Adjust {
+                    ctrl: *ctrl,
+                    delta: -1,
+                },
+            });
+            hits.push(Hit {
+                y,
+                x0: x_value + 4 + value_width as u16,
+                x1: x_value + 7 + value_width as u16,
+                action: HitAction::Adjust {
+                    ctrl: *ctrl,
+                    delta: 1,
+                },
+            });
+        }
         lines.push(render_row(app, row, selected, width));
     }
     f.render_widget(Paragraph::new(Text::from(lines)), inner);
@@ -202,13 +208,17 @@ fn render_row(app: &App, row: &Row, selected: bool, width: usize) -> Line<'stati
     } else {
         Style::default()
     };
-    let dim = if selected { base } else { Style::default().fg(DIM) };
+    let dim = if selected {
+        base
+    } else {
+        Style::default().fg(DIM)
+    };
     let accent = if selected {
         base
     } else {
         Style::default().fg(ACCENT)
     };
-    
+
     match row {
         Row::Section(title) => {
             let fill = "─".repeat(width.saturating_sub(title.chars().count() + 5));
@@ -414,7 +424,11 @@ fn control_value_spans(app: &App, idx: usize, selected: bool) -> Vec<Span<'stati
     } else {
         Style::default()
     };
-    let dim = if selected { base } else { Style::default().fg(DIM) };
+    let dim = if selected {
+        base
+    } else {
+        Style::default().fg(DIM)
+    };
     let accent = if selected {
         base
     } else {
@@ -430,10 +444,7 @@ fn control_value_spans(app: &App, idx: usize, selected: bool) -> Vec<Span<'stati
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             if selected {
-                vec![Span::styled(
-                    if on { "  ● ON" } else { "  ○ OFF" },
-                    base,
-                )]
+                vec![Span::styled(if on { "  ● ON" } else { "  ○ OFF" }, base)]
             } else if on {
                 vec![Span::styled("  ● ON", Style::default().fg(OK))]
             } else {
@@ -443,7 +454,10 @@ fn control_value_spans(app: &App, idx: usize, selected: bool) -> Vec<Span<'stati
         Kind::Stepper { unit, .. } => {
             let value = app
                 .control_value(c)
-                .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                .and_then(|v| {
+                    v.as_f64()
+                        .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                })
                 .map(crate::app::fmt_num)
                 .unwrap_or_else(|| "—".into());
             let display = if unit.is_empty() {
@@ -471,9 +485,7 @@ fn control_value_spans(app: &App, idx: usize, selected: bool) -> Vec<Span<'stati
             ]
         }
         Kind::StateOptions {
-            state_key,
-            options,
-            ..
+            state_key, options, ..
         } => {
             let cur = app.vstate.get(state_key).cloned().unwrap_or_default();
             let label = options
@@ -512,30 +524,30 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
                 }
             }
             Row::Keybind(_) => {
-                help = "Enter: editar · a: añadir · d: borrar · w: guardar y recargar Hyprland".into()
+                help = "Enter: edit · a: add · d: delete · w: save and reload Hyprland".into()
             }
             Row::Startup(_) => {
-                help = "Enter: editar · a: añadir · d: borrar · w: guardar y recargar".into()
+                help = "Enter: edit · a: add · d: delete · w: save and reload".into()
             }
             Row::ZoneField { field, .. } => {
                 help = match field {
-                    7 => "Enter: borrar la zona (mínimo una)".into(),
-                    _ => "←/→ o click en [-] [+]: cambiar valor".to_string(),
+                    7 => "Enter: delete the zone (at least one must remain)".into(),
+                    _ => "←/→ or click [-] [+]: change value".to_string(),
                 }
             }
             Row::ZoneModule { .. } => {
-                help = "Enter: activar/desactivar · Shift+←/→: mover (cruza zonas)".into()
+                help = "Enter: enable/disable · Shift+←/→: move (crosses zones)".into()
             }
             Row::ClassicItem { .. } => {
-                help = "↑/↓: reordenar · m: mover de sección · g: agrupar · u: desagrupar".into()
+                help = "↑/↓: reorder · m: move section · g: group · u: ungroup".into()
             }
-            Row::PaletteItem(_) => help = "Enter o click: activar paleta".into(),
-            Row::PaletteSlot(_) => help = "Enter: editar hex (#rrggbb)".into(),
+            Row::PaletteItem(_) => help = "Enter or click: activate palette".into(),
+            Row::PaletteSlot(_) => help = "Enter: edit hex (#rrggbb)".into(),
             Row::MonitorField { field, .. } => {
                 help = if *field == 8 || *field == 9 {
-                    "←/→: mover 10px; Apply para aplicar".into()
+                    "←/→: move 10px; Apply to commit".into()
                 } else {
-                    "Enter: elegir · ←/→: ciclar; Apply para aplicar".into()
+                    "Enter: choose · ←/→: cycle; Apply to commit".into()
                 }
             }
             _ => {}
@@ -546,7 +558,8 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
     } else {
         format!("  ·  {}", app.status)
     };
-    let keys = "  ↑↓ mover · ←→ ajustar · Enter elegir · / buscar · Tab página · 1-6 grupo · ? ayuda · q salir";
+    let keys =
+        "  ↑↓ move · ←→ adjust · Enter select · / search · Tab page · 1-6 group · ? help · q quit";
     let lines = Text::from(vec![
         Line::from(Span::styled(help, Style::default().fg(ACCENT))),
         Line::from(vec![
@@ -564,7 +577,7 @@ fn render_search(f: &mut Frame, state: &SearchState, area: Rect, hits: &mut Vec<
     f.render_widget(Clear, rect);
     let block = Block::bordered()
         .border_style(Style::default().fg(ACCENT))
-        .title(" Search — escribe para filtrar ");
+        .title(" Search — type to filter ");
     let inner = block.inner(rect);
     f.render_widget(block, rect);
     if inner.height == 0 {
@@ -589,7 +602,13 @@ fn render_search(f: &mut Frame, state: &SearchState, area: Rect, hits: &mut Vec<
     if offset + list_height > state.results.len() {
         offset = state.results.len().saturating_sub(list_height);
     }
-    for (i, entry) in state.results.iter().enumerate().skip(offset).take(list_height) {
+    for (i, entry) in state
+        .results
+        .iter()
+        .enumerate()
+        .skip(offset)
+        .take(list_height)
+    {
         let selected = i == state.sel;
         let style = if selected {
             Style::default()
@@ -624,10 +643,10 @@ fn render_search(f: &mut Frame, state: &SearchState, area: Rect, hits: &mut Vec<
         });
     }
     let hint = if state.results.is_empty() {
-        "sin resultados · Esc cerrar".to_string()
+        "no results · Esc to close".to_string()
     } else {
         format!(
-            "{} resultado(s) · Enter abrir · ↑↓ mover · Esc cerrar",
+            "{} result(s) · Enter open · ↑↓ move · Esc close",
             state.results.len()
         )
     };
@@ -664,7 +683,10 @@ fn render_chooser(
     let width = 52.min(area.width.saturating_sub(4));
     let rect = centered(area, width, height);
     f.render_widget(Clear, rect);
-    let items: Vec<ListItem> = opts.iter().map(|o| ListItem::new(o.label.clone())).collect();
+    let items: Vec<ListItem> = opts
+        .iter()
+        .map(|o| ListItem::new(o.label.clone()))
+        .collect();
     let list = List::new(items)
         .block(Block::bordered().title(format!(" {} ", title)))
         .highlight_style(
@@ -722,7 +744,11 @@ fn render_form(f: &mut Frame, app: &App, kb: usize, field: usize, area: Rect) {
     let mut lines = Vec::new();
     lines.push(Line::from(""));
     for (i, (key, label)) in KEYBIND_FIELDS.iter().enumerate() {
-        let value = b.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let value = b
+            .get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let marker = if i == field { "▸ " } else { "  " };
         let style = if i == field {
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
@@ -737,11 +763,35 @@ fn render_form(f: &mut Frame, app: &App, kb: usize, field: usize, area: Rect) {
     }
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        "  ↑↓ campo · Enter editar · Esc cerrar · w guardar keybinds",
+        "  ↑↓ field · Enter edit · r record shortcut · Esc close · w save keybinds",
         Style::default().fg(DIM),
     )));
     f.render_widget(
         Paragraph::new(Text::from(lines)).block(Block::bordered().title(" Keybind ")),
+        rect,
+    );
+}
+
+fn render_record(f: &mut Frame, app: &App, kb: usize, area: Rect) {
+    let rect = centered(area, 62.min(area.width.saturating_sub(4)), 6);
+    f.render_widget(Clear, rect);
+    let bind = app.keybinds.get(kb).cloned().unwrap_or_default();
+    let mods = bind.get("mods").and_then(|v| v.as_str()).unwrap_or("");
+    let key = bind.get("key").and_then(|v| v.as_str()).unwrap_or("");
+    let lines = Text::from(vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Press the key combination to record...",
+            Style::default().fg(ACCENT),
+        )),
+        Line::from(Span::styled(
+            format!("  current: {} {}", mods, key),
+            Style::default().fg(DIM),
+        )),
+        Line::from(Span::styled("  Esc cancels", Style::default().fg(DIM))),
+    ]);
+    f.render_widget(
+        Paragraph::new(lines).block(Block::bordered().title(" Record shortcut ")),
         rect,
     );
 }
@@ -754,36 +804,42 @@ fn render_help(f: &mut Frame, area: Rect) {
     );
     f.render_widget(Clear, rect);
     let lines = vec![
-        Line::from(Span::styled("  Navegación", Style::default().fg(ACCENT))),
-        Line::from("  ↑/↓, j/k        mover selección"),
-        Line::from("  ←/→, h/l        ajustar stepper / ciclar opciones"),
-        Line::from("  Enter / Space   editar, togglear, abrir chooser, ejecutar acción"),
-        Line::from("  /  o Ctrl+P     buscar cualquier opción (paleta de búsqueda)"),
-        Line::from("  Tab / Shift+Tab siguiente / anterior página"),
-        Line::from("  1..6            ir al grupo Shell, Bar, Theme, Behavior, Widgets, System"),
-        Line::from("  r               recargar settings.json desde disco"),
-        Line::from("  ?               esta ayuda"),
-        Line::from("  q / Ctrl+C      salir (persiste efectos de Hyprland pendientes)"),
+        Line::from(Span::styled("  Navigation", Style::default().fg(ACCENT))),
+        Line::from("  ↑/↓, j/k        move selection"),
+        Line::from("  ←/→, h/l        adjust steppers / cycle options"),
+        Line::from("  Enter / Space   edit, toggle, open chooser, run action"),
+        Line::from("  ↑/↓ edges       wrap to the previous / next page"),
+        Line::from("  Ctrl+←/→, [ ]   previous / next page"),
+        Line::from("  /  or Ctrl+P    search any option (search palette)"),
+        Line::from("  Tab / Shift+Tab next / previous page"),
+        Line::from("  1..6            jump to group Shell, Bar, Theme, Behavior, Widgets, System"),
+        Line::from("  r               reload settings.json from disk"),
+        Line::from("  ?               this help"),
+        Line::from("  q / Ctrl+C      quit (flushes pending Hyprland effects)"),
         Line::from(""),
-        Line::from(Span::styled("  Ratón / táctil", Style::default().fg(ACCENT))),
-        Line::from("  click           seleccionar (rail: cambiar de página)"),
-        Line::from("  doble-tap       abrir / ejecutar la fila seleccionada"),
+        Line::from(Span::styled("  Mouse / touch", Style::default().fg(ACCENT))),
+        Line::from("  click           select (rail: switch page)"),
+        Line::from("  double-tap      open / run the selected row"),
         Line::from("  [-] / [+]       pulsar o arrastrar en steppers"),
-        Line::from("  rueda           subir / bajar selección"),
+        Line::from("  wheel           move selection up / down"),
         Line::from(""),
-        Line::from(Span::styled("  Listas", Style::default().fg(ACCENT))),
-        Line::from("  a / d / w       añadir / borrar / guardar (keybinds, startup)"),
-        Line::from(""),
-        Line::from(Span::styled("  Zonas / Classic", Style::default().fg(ACCENT))),
-        Line::from("  Shift+←/→       mover módulo entre zonas"),
-        Line::from("  m / g / u       mover de sección / agrupar / desagrupar (classic)"),
+        Line::from(Span::styled("  Lists", Style::default().fg(ACCENT))),
+        Line::from("  a / d / w       add / delete / save (keybinds, startup)"),
+        Line::from("  r (in form)     record the shortcut by pressing it"),
         Line::from(""),
         Line::from(Span::styled(
-            "  La TUI escribe tmp+mv atómico, igual que el panel QML.",
+            "  Zones / Classic",
+            Style::default().fg(ACCENT),
+        )),
+        Line::from("  Shift+←/→       move a module across zones"),
+        Line::from("  m / g / u       move section / group / ungroup (classic)"),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  The TUI writes tmp+mv atomically, same as the QML panel.",
             Style::default().fg(DIM),
         )),
         Line::from(Span::styled(
-            "  (pulsa cualquier tecla para cerrar)",
+            "  (press any key to close)",
             Style::default().fg(DIM),
         )),
     ];
@@ -821,11 +877,7 @@ fn zone_field_value(zone: Option<&serde_json::Value>, field: usize) -> String {
         }
         3 => {
             let bg = s("zoneBg");
-            if bg.is_empty() {
-                "—".into()
-            } else {
-                bg
-            }
+            if bg.is_empty() { "—".into() } else { bg }
         }
         4 => on_off(b("zoneBgSolid")),
         5 => format!("{} px", n("borderWidth") as i64),
@@ -878,11 +930,7 @@ fn monitor_value(app: &App, mon: usize, field: usize) -> String {
 }
 
 fn on_off(v: bool) -> String {
-    if v {
-        "● ON".into()
-    } else {
-        "○ OFF".into()
-    }
+    if v { "● ON".into() } else { "○ OFF".into() }
 }
 
 fn value_string(v: serde_json::Value) -> String {

@@ -12,8 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static FORCE_DRY: AtomicBool = AtomicBool::new(false);
 
-/// Force dry-run in tests (never executes external commands).
-#[cfg(test)]
+/// Force dry-run (tests and the `--dry-run` flag): never runs commands.
 pub fn set_dry(v: bool) {
     FORCE_DRY.store(v, Ordering::Relaxed);
 }
@@ -27,12 +26,17 @@ pub fn script(name: &str) -> String {
 }
 
 pub fn quickshell_dir() -> String {
-    format!("{}/.config/hypr/scripts/quickshell", crate::settings::home().display())
+    format!(
+        "{}/.config/hypr/scripts/quickshell",
+        crate::settings::home().display()
+    )
 }
 
 fn dry_run() -> bool {
     FORCE_DRY.load(Ordering::Relaxed)
-        || std::env::var("XTURING_DRY").map(|v| v == "1").unwrap_or(false)
+        || std::env::var("XTURING_DRY")
+            .map(|v| v == "1")
+            .unwrap_or(false)
 }
 
 pub fn log(cmd: &str) {

@@ -193,10 +193,25 @@ fn toggle(label: &str, path: &[&str], help: &str) -> Control {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn stepper(label: &str, path: &[&str], step: f64, min: f64, max: f64, decimals: u32, unit: &'static str, help: &str) -> Control {
+fn stepper(
+    label: &str,
+    path: &[&str],
+    step: f64,
+    min: f64,
+    max: f64,
+    decimals: u32,
+    unit: &'static str,
+    help: &str,
+) -> Control {
     control(
         label,
-        Kind::Stepper { step, min, max, decimals, unit },
+        Kind::Stepper {
+            step,
+            min,
+            max,
+            decimals,
+            unit,
+        },
         p(path),
         help,
     )
@@ -205,7 +220,14 @@ fn stepper(label: &str, path: &[&str], step: f64, min: f64, max: f64, decimals: 
 fn options(label: &str, path: &[&str], opts: &[(&str, &str)], help: &str) -> Control {
     control(
         label,
-        Kind::Options(opts.iter().map(|(l, v)| Opt { label: l.to_string(), value: v.to_string() }).collect()),
+        Kind::Options(
+            opts.iter()
+                .map(|(l, v)| Opt {
+                    label: l.to_string(),
+                    value: v.to_string(),
+                })
+                .collect(),
+        ),
         p(path),
         help,
     )
@@ -214,7 +236,10 @@ fn options(label: &str, path: &[&str], opts: &[(&str, &str)], help: &str) -> Con
 fn text(label: &str, path: &[&str], placeholder: &str, max: usize, help: &str) -> Control {
     control(
         label,
-        Kind::Text { placeholder: placeholder.to_string(), max },
+        Kind::Text {
+            placeholder: placeholder.to_string(),
+            max,
+        },
         p(path),
         help,
     )
@@ -234,7 +259,10 @@ fn visible(mut c: Control, cond: Cond) -> Control {
 }
 
 fn section(title: &str, controls: Vec<Control>) -> Section {
-    Section { title: title.to_string(), controls }
+    Section {
+        title: title.to_string(),
+        controls,
+    }
 }
 
 // ───────────────────────────── catalog ─────────────────────────────
@@ -248,27 +276,84 @@ pub fn build() -> Vec<Page> {
             label: "General",
             engine: None,
             body: Body::Controls(vec![
-                section("Display", vec![
-                    stepper("UI Scale", &["uiScale"], 0.1, 0.5, 2.0, 1, "x", "Escala global del shell (0.5 – 2.0)"),
-                    stepper("App Scale", &["appScale"], 0.25, 0.75, 2.0, 2, "x", "Escala de aplicaciones: dispara scale-menu.sh al cambiar"),
-                    stepper("Workspaces", &["workspaceCount"], 1.0, 2.0, 10.0, 0, "", "2 – 10; recarga el topbar al cambiar"),
-                ]),
-                section("Keyboard", vec![
-                    text("Keyboard layouts", &["language"], "us,es", 128, "Códigos xkb separados por coma (us, gb, es, latam, dvorak, us-intl...)"),
-                    options("Layout shortcut", &["kbOptions"], &[
-                        ("Alt + Shift", "grp:alt_shift_toggle"),
-                        ("Win + Space", "grp:win_space_toggle"),
-                        ("Caps Lock", "grp:caps_toggle"),
-                        ("Ctrl + Shift", "grp:ctrl_shift_toggle"),
-                        ("Ctrl + Alt", "grp:ctrl_alt_toggle"),
-                        ("Right Alt", "grp:toggle"),
-                        ("No Toggle", ""),
-                    ], "Atajo para cambiar de layout"),
-                ]),
-                section("Wallpaper", vec![
-                    text("Wallpaper directory", &["wallpaperDir"], "~/.config/hypr/wallpapers", 512, "Directorio de wallpapers"),
-                    action("Change wallpaper", Action::OpenWidget("wallpaper".into()), "Abre el selector davincix (widget wallpaper)"),
-                ]),
+                section(
+                    "Display",
+                    vec![
+                        stepper(
+                            "UI Scale",
+                            &["uiScale"],
+                            0.1,
+                            0.5,
+                            2.0,
+                            1,
+                            "x",
+                            "Global shell scale (0.5 – 2.0)",
+                        ),
+                        stepper(
+                            "App Scale",
+                            &["appScale"],
+                            0.25,
+                            0.75,
+                            2.0,
+                            2,
+                            "x",
+                            "App scale: runs scale-menu.sh on change",
+                        ),
+                        stepper(
+                            "Workspaces",
+                            &["workspaceCount"],
+                            1.0,
+                            2.0,
+                            10.0,
+                            0,
+                            "",
+                            "2 – 10; reloads the topbar on change",
+                        ),
+                    ],
+                ),
+                section(
+                    "Keyboard",
+                    vec![
+                        text(
+                            "Keyboard layouts",
+                            &["language"],
+                            "us,es",
+                            128,
+                            "Comma-separated xkb codes (us, gb, es, latam, dvorak, us-intl...)",
+                        ),
+                        options(
+                            "Layout shortcut",
+                            &["kbOptions"],
+                            &[
+                                ("Alt + Shift", "grp:alt_shift_toggle"),
+                                ("Win + Space", "grp:win_space_toggle"),
+                                ("Caps Lock", "grp:caps_toggle"),
+                                ("Ctrl + Shift", "grp:ctrl_shift_toggle"),
+                                ("Ctrl + Alt", "grp:ctrl_alt_toggle"),
+                                ("Right Alt", "grp:toggle"),
+                                ("No Toggle", ""),
+                            ],
+                            "Shortcut to switch keyboard layouts",
+                        ),
+                    ],
+                ),
+                section(
+                    "Wallpaper",
+                    vec![
+                        text(
+                            "Wallpaper directory",
+                            &["wallpaperDir"],
+                            "~/.config/hypr/wallpapers",
+                            512,
+                            "Wallpaper directory",
+                        ),
+                        action(
+                            "Change wallpaper",
+                            Action::OpenWidget("wallpaper".into()),
+                            "Open the davincix picker (wallpaper widget)",
+                        ),
+                    ],
+                ),
             ]),
         },
         Page {
@@ -306,29 +391,46 @@ pub fn build() -> Vec<Page> {
             label: "Engine",
             engine: None,
             body: Body::Controls(vec![
-                section("Engine", vec![
-                    control(
-                        "Engine",
-                        Kind::StateOptions {
-                            state_key: "engine".into(),
-                            options: vec![
-                                Opt { label: "Bar (zones · hot switch)".into(), value: "bar".into() },
-                                Opt { label: "ClassicBar (autohide · pills)".into(), value: "classic".into() },
-                            ],
-                            action: Action::SetEngine,
-                        },
-                        Vec::new(),
-                        "Cambia entre el motor de zonas y ClassicBar (hot switch)",
-                    ),
-                    visible(
-                        action("Mirror bar layout", Action::MirrorBar, "Importa los módulos activos del bar a classicbar"),
-                        Cond::Engine("classic"),
-                    ),
-                    visible(
-                        action("Classic defaults", Action::ClassicApplyDefaults, "Resetea classicbar a sus valores por defecto"),
-                        Cond::Engine("classic"),
-                    ),
-                ]),
+                section(
+                    "Engine",
+                    vec![
+                        control(
+                            "Engine",
+                            Kind::StateOptions {
+                                state_key: "engine".into(),
+                                options: vec![
+                                    Opt {
+                                        label: "Bar (zones · hot switch)".into(),
+                                        value: "bar".into(),
+                                    },
+                                    Opt {
+                                        label: "ClassicBar (autohide · pills)".into(),
+                                        value: "classic".into(),
+                                    },
+                                ],
+                                action: Action::SetEngine,
+                            },
+                            Vec::new(),
+                            "Switch between the zones engine and ClassicBar (hot switch)",
+                        ),
+                        visible(
+                            action(
+                                "Mirror bar layout",
+                                Action::MirrorBar,
+                                "Import the enabled bar modules into classicbar",
+                            ),
+                            Cond::Engine("classic"),
+                        ),
+                        visible(
+                            action(
+                                "Classic defaults",
+                                Action::ClassicApplyDefaults,
+                                "Reset classicbar to its defaults",
+                            ),
+                            Cond::Engine("classic"),
+                        ),
+                    ],
+                ),
                 section("Popup positions", {
                     let mut out = Vec::new();
                     for (id, label) in POPUP_WIDGETS {
@@ -347,7 +449,7 @@ pub fn build() -> Vec<Page> {
                                 ("Bottom Center", "bottom-center"),
                                 ("Bottom Right", "bottom-right"),
                             ],
-                            "auto = layout propio del widget; el resto ancla con margen de 20px escalado",
+                            "auto = the widget's own layout; the rest anchor with a 20px scaled margin",
                         ));
                     }
                     out
@@ -359,20 +461,39 @@ pub fn build() -> Vec<Page> {
             group: Group::Bar,
             label: "Position",
             engine: None,
-            body: Body::Controls(vec![section("Bar position", vec![
-                visible(
-                    options("Position", &["bar", "position"], &[
-                        ("Top", "top"), ("Bottom", "bottom"), ("Left", "left"), ("Right", "right"),
-                    ], "Posición del bar de zonas"),
-                    Cond::Engine("bar"),
-                ),
-                visible(
-                    options("Position", &["classicbar", "position"], &[
-                        ("Top", "top"), ("Bottom", "bottom"), ("Left", "left"), ("Right", "right"),
-                    ], "Posición de ClassicBar"),
-                    Cond::Engine("classic"),
-                ),
-            ])]),
+            body: Body::Controls(vec![section(
+                "Bar position",
+                vec![
+                    visible(
+                        options(
+                            "Position",
+                            &["bar", "position"],
+                            &[
+                                ("Top", "top"),
+                                ("Bottom", "bottom"),
+                                ("Left", "left"),
+                                ("Right", "right"),
+                            ],
+                            "Zones bar position",
+                        ),
+                        Cond::Engine("bar"),
+                    ),
+                    visible(
+                        options(
+                            "Position",
+                            &["classicbar", "position"],
+                            &[
+                                ("Top", "top"),
+                                ("Bottom", "bottom"),
+                                ("Left", "left"),
+                                ("Right", "right"),
+                            ],
+                            "ClassicBar position",
+                        ),
+                        Cond::Engine("classic"),
+                    ),
+                ],
+            )]),
         },
         Page {
             id: "d_style",
@@ -407,16 +528,36 @@ pub fn build() -> Vec<Page> {
             group: Group::Bar,
             label: "Workspaces",
             engine: None,
-            body: Body::Controls(vec![section("Workspaces marker", vec![
-                options("Marker", &["bar", "workspacesMarker"], &[
-                    ("Numbers", "number"), ("Dots", "dot"), ("Letters", "letter"), ("Custom", "custom"),
-                ], "Cómo se dibujan los workspaces vacíos"),
-                visible(
-                    text("Marker character", &["bar", "workspacesMarkerText"], "•", 4, "Hasta 4 caracteres; vacío usa •"),
-                    Cond::Eq(p(&["bar", "workspacesMarker"]), Value::String("custom".into())),
-                ),
-                info("Workspace count", "workspaceCount"),
-            ])]),
+            body: Body::Controls(vec![section(
+                "Workspaces marker",
+                vec![
+                    options(
+                        "Marker",
+                        &["bar", "workspacesMarker"],
+                        &[
+                            ("Numbers", "number"),
+                            ("Dots", "dot"),
+                            ("Letters", "letter"),
+                            ("Custom", "custom"),
+                        ],
+                        "How empty workspaces are drawn",
+                    ),
+                    visible(
+                        text(
+                            "Marker character",
+                            &["bar", "workspacesMarkerText"],
+                            "•",
+                            4,
+                            "Up to 4 characters; empty uses •",
+                        ),
+                        Cond::Eq(
+                            p(&["bar", "workspacesMarker"]),
+                            Value::String("custom".into()),
+                        ),
+                    ),
+                    info("Workspace count", "workspaceCount"),
+                ],
+            )]),
         },
         // ═══════════════ THEME ═══════════════
         Page {
@@ -432,15 +573,40 @@ pub fn build() -> Vec<Page> {
             label: "Animations",
             engine: None,
             body: Body::Controls(vec![
-                section("General", vec![
-                    toggle("Enabled", &["animations", "enabled"], "Animaciones de Hyprland (user-animations.lua)"),
-                ]),
-                section("Speed", vec![
-                    options("Preset", &["animations", "speed"], &[
-                        ("Snappy", "0.6"), ("Fast", "0.8"), ("Normal", "1.0"), ("Slow", "1.5"),
-                    ], "Presets de velocidad; mayor valor = más lento"),
-                    stepper("Speed", &["animations", "speed"], 0.1, 0.5, 2.0, 1, "x", "0.5 – 2.0"),
-                ]),
+                section(
+                    "General",
+                    vec![toggle(
+                        "Enabled",
+                        &["animations", "enabled"],
+                        "Hyprland animations (user-animations.lua)",
+                    )],
+                ),
+                section(
+                    "Speed",
+                    vec![
+                        options(
+                            "Preset",
+                            &["animations", "speed"],
+                            &[
+                                ("Snappy", "0.6"),
+                                ("Fast", "0.8"),
+                                ("Normal", "1.0"),
+                                ("Slow", "1.5"),
+                            ],
+                            "Speed presets; higher value = slower",
+                        ),
+                        stepper(
+                            "Speed",
+                            &["animations", "speed"],
+                            0.1,
+                            0.5,
+                            2.0,
+                            1,
+                            "x",
+                            "0.5 – 2.0",
+                        ),
+                    ],
+                ),
             ]),
         },
         Page {
@@ -449,17 +615,81 @@ pub fn build() -> Vec<Page> {
             label: "Shadows",
             engine: None,
             body: Body::Controls(vec![
-                section("Shape", vec![
-                    toggle("Enabled", &["shadows", "enabled"], "Sombras del shell (paneles, barra)"),
-                    stepper("Blur", &["shadows", "blur"], 2.0, 0.0, 60.0, 0, "px", "0 – 60"),
-                    stepper("Spread", &["shadows", "spread"], 1.0, -10.0, 20.0, 0, "px", "-10 – 20"),
-                    stepper("Corner radius", &["shadows", "radius"], 1.0, 0.0, 30.0, 0, "px", "0 – 30"),
-                ]),
-                section("Placement", vec![
-                    stepper("Offset X", &["shadows", "offsetX"], 2.0, -40.0, 40.0, 0, "px", "-40 – 40"),
-                    stepper("Offset Y", &["shadows", "offsetY"], 2.0, -40.0, 40.0, 0, "px", "-40 – 40"),
-                    stepper("Opacity", &["shadows", "opacity"], 0.05, 0.0, 1.0, 2, "", "0 – 1"),
-                ]),
+                section(
+                    "Shape",
+                    vec![
+                        toggle(
+                            "Enabled",
+                            &["shadows", "enabled"],
+                            "Shell shadows (panels, bar)",
+                        ),
+                        stepper(
+                            "Blur",
+                            &["shadows", "blur"],
+                            2.0,
+                            0.0,
+                            60.0,
+                            0,
+                            "px",
+                            "0 – 60",
+                        ),
+                        stepper(
+                            "Spread",
+                            &["shadows", "spread"],
+                            1.0,
+                            -10.0,
+                            20.0,
+                            0,
+                            "px",
+                            "-10 – 20",
+                        ),
+                        stepper(
+                            "Corner radius",
+                            &["shadows", "radius"],
+                            1.0,
+                            0.0,
+                            30.0,
+                            0,
+                            "px",
+                            "0 – 30",
+                        ),
+                    ],
+                ),
+                section(
+                    "Placement",
+                    vec![
+                        stepper(
+                            "Offset X",
+                            &["shadows", "offsetX"],
+                            2.0,
+                            -40.0,
+                            40.0,
+                            0,
+                            "px",
+                            "-40 – 40",
+                        ),
+                        stepper(
+                            "Offset Y",
+                            &["shadows", "offsetY"],
+                            2.0,
+                            -40.0,
+                            40.0,
+                            0,
+                            "px",
+                            "-40 – 40",
+                        ),
+                        stepper(
+                            "Opacity",
+                            &["shadows", "opacity"],
+                            0.05,
+                            0.0,
+                            1.0,
+                            2,
+                            "",
+                            "0 – 1",
+                        ),
+                    ],
+                ),
             ]),
         },
         Page {
@@ -467,10 +697,26 @@ pub fn build() -> Vec<Page> {
             group: Group::Theme,
             label: "Glass",
             engine: None,
-            body: Body::Controls(vec![section("Glassmorphism", vec![
-                toggle("Enabled", &["glass", "enabled"], "Fondo translúcido en las superficies del shell"),
-                stepper("Background opacity", &["glass", "opacity"], 0.05, 0.4, 1.0, 2, "", "0.4 – 1.0"),
-            ])]),
+            body: Body::Controls(vec![section(
+                "Glassmorphism",
+                vec![
+                    toggle(
+                        "Enabled",
+                        &["glass", "enabled"],
+                        "Translucent background on shell surfaces",
+                    ),
+                    stepper(
+                        "Background opacity",
+                        &["glass", "opacity"],
+                        0.05,
+                        0.4,
+                        1.0,
+                        2,
+                        "",
+                        "0.4 – 1.0",
+                    ),
+                ],
+            )]),
         },
         Page {
             id: "d_mascots",
@@ -478,27 +724,70 @@ pub fn build() -> Vec<Page> {
             label: "Mascots",
             engine: None,
             body: Body::Controls(vec![
-                section("General", vec![
-                    toggle("Enabled", &["mascots", "enabled"], "Mascotas del escritorio"),
-                ]),
-                section("Species", vec![
-                    options("Species", &["mascots", "species"], &[
-                        ("Flame", "flame"), ("Cats", "cat"), ("Dogs", "dog"), ("Eyes", "eyes"), ("Mixed", "mixed"), ("Dots", "dots"),
-                    ], "Especie de la mascota"),
-                ]),
-                section("Position", vec![
-                    options("Position", &["mascots", "position"], &[
-                        ("Top Left", "top-left"), ("Top Center", "top-center"), ("Top Right", "top-right"),
-                        ("Center Left", "center-left"), ("Center", "center"), ("Center Right", "center-right"),
-                        ("Bottom Left", "bottom-left"), ("Bottom Center", "bottom-center"), ("Bottom Right", "bottom-right"),
-                    ], "Ancla de la mascota"),
-                ]),
-                section("How many", vec![
-                    options("Count", &["mascots", "count"], &[
-                        ("One", "1"), ("Two", "2"), ("Three", "3"),
-                    ], "1 – 3 mascotas"),
-                    stepper("Size", &["mascots", "size"], 0.1, 0.6, 1.6, 1, "x", "0.6 – 1.6"),
-                ]),
+                section(
+                    "General",
+                    vec![toggle(
+                        "Enabled",
+                        &["mascots", "enabled"],
+                        "Desktop mascots",
+                    )],
+                ),
+                section(
+                    "Species",
+                    vec![options(
+                        "Species",
+                        &["mascots", "species"],
+                        &[
+                            ("Flame", "flame"),
+                            ("Cats", "cat"),
+                            ("Dogs", "dog"),
+                            ("Eyes", "eyes"),
+                            ("Mixed", "mixed"),
+                            ("Dots", "dots"),
+                        ],
+                        "Mascot species",
+                    )],
+                ),
+                section(
+                    "Position",
+                    vec![options(
+                        "Position",
+                        &["mascots", "position"],
+                        &[
+                            ("Top Left", "top-left"),
+                            ("Top Center", "top-center"),
+                            ("Top Right", "top-right"),
+                            ("Center Left", "center-left"),
+                            ("Center", "center"),
+                            ("Center Right", "center-right"),
+                            ("Bottom Left", "bottom-left"),
+                            ("Bottom Center", "bottom-center"),
+                            ("Bottom Right", "bottom-right"),
+                        ],
+                        "Mascot anchor",
+                    )],
+                ),
+                section(
+                    "How many",
+                    vec![
+                        options(
+                            "Count",
+                            &["mascots", "count"],
+                            &[("One", "1"), ("Two", "2"), ("Three", "3")],
+                            "1 – 3 mascotas",
+                        ),
+                        stepper(
+                            "Size",
+                            &["mascots", "size"],
+                            0.1,
+                            0.6,
+                            1.6,
+                            1,
+                            "x",
+                            "0.6 – 1.6",
+                        ),
+                    ],
+                ),
             ]),
         },
         // ═══════════════ BEHAVIOR ═══════════════
@@ -538,17 +827,43 @@ pub fn build() -> Vec<Page> {
             label: "Input",
             engine: None,
             body: Body::Controls(vec![
-                section("Mouse", vec![
-                    stepper("Sensitivity", &["input", "sensitivity"], 0.1, -1.0, 1.0, 1, "", "-1.0 – 1.0"),
-                    options("Accel profile", &["input", "accelProfile"], &[
-                        ("Adaptive", "adaptive"), ("Flat", "flat"),
-                    ], "Perfil de aceleración del puntero"),
-                ]),
-                section("Touchpad", vec![
-                    toggle("Tap to click", &["input", "tapToClick"], "Tap para hacer clic"),
-                    toggle("Natural scroll", &["input", "naturalScroll"], "Scroll natural"),
-                    toggle("Disable while typing", &["input", "disableWhileTyping"], "Desactiva el touchpad al escribir"),
-                ]),
+                section(
+                    "Mouse",
+                    vec![
+                        stepper(
+                            "Sensitivity",
+                            &["input", "sensitivity"],
+                            0.1,
+                            -1.0,
+                            1.0,
+                            1,
+                            "",
+                            "-1.0 – 1.0",
+                        ),
+                        options(
+                            "Accel profile",
+                            &["input", "accelProfile"],
+                            &[("Adaptive", "adaptive"), ("Flat", "flat")],
+                            "Pointer acceleration profile",
+                        ),
+                    ],
+                ),
+                section(
+                    "Touchpad",
+                    vec![
+                        toggle("Tap to click", &["input", "tapToClick"], "Tap to click"),
+                        toggle(
+                            "Natural scroll",
+                            &["input", "naturalScroll"],
+                            "Scroll natural",
+                        ),
+                        toggle(
+                            "Disable while typing",
+                            &["input", "disableWhileTyping"],
+                            "Disable the touchpad while typing",
+                        ),
+                    ],
+                ),
             ]),
         },
         Page {
@@ -557,28 +872,43 @@ pub fn build() -> Vec<Page> {
             label: "GPU",
             engine: None,
             body: Body::Controls(vec![
-                section("Optimus mode", vec![
-                    control(
-                        "Mode",
-                        Kind::StateOptions {
-                            state_key: "gpu".into(),
-                            options: vec![
-                                Opt { label: "Integrated".into(), value: "integrated".into() },
-                                Opt { label: "Hybrid".into(), value: "hybrid".into() },
-                                Opt { label: "NVIDIA".into(), value: "nvidia".into() },
-                            ],
-                            action: Action::GpuMode,
-                        },
-                        Vec::new(),
-                        "Cambia con envycontrol; puede requerir logout/reboot",
-                    ),
-                    info("Current mode", "gpu.mode"),
-                    action("Refresh", Action::GpuRefresh, "Relee envycontrol --query"),
-                ]),
-                section("Environment (static)", vec![
-                    info("GBM_BACKEND", "gpu.env.gbm"),
-                    info("LIBVA_DRIVER_NAME", "gpu.env.libva"),
-                ]),
+                section(
+                    "Optimus mode",
+                    vec![
+                        control(
+                            "Mode",
+                            Kind::StateOptions {
+                                state_key: "gpu".into(),
+                                options: vec![
+                                    Opt {
+                                        label: "Integrated".into(),
+                                        value: "integrated".into(),
+                                    },
+                                    Opt {
+                                        label: "Hybrid".into(),
+                                        value: "hybrid".into(),
+                                    },
+                                    Opt {
+                                        label: "NVIDIA".into(),
+                                        value: "nvidia".into(),
+                                    },
+                                ],
+                                action: Action::GpuMode,
+                            },
+                            Vec::new(),
+                            "Switches with envycontrol; may require logout/reboot",
+                        ),
+                        info("Current mode", "gpu.mode"),
+                        action("Refresh", Action::GpuRefresh, "Relee envycontrol --query"),
+                    ],
+                ),
+                section(
+                    "Environment (static)",
+                    vec![
+                        info("GBM_BACKEND", "gpu.env.gbm"),
+                        info("LIBVA_DRIVER_NAME", "gpu.env.libva"),
+                    ],
+                ),
             ]),
         },
         Page {
@@ -587,26 +917,38 @@ pub fn build() -> Vec<Page> {
             label: "Idle",
             engine: None,
             body: Body::Controls(vec![
-                section("Idle mode", vec![
-                    control(
-                        "Mode",
-                        Kind::StateOptions {
-                            state_key: "idle".into(),
-                            options: vec![
-                                Opt { label: "Auto".into(), value: "normal".into() },
-                                Opt { label: "Awake".into(), value: "awake".into() },
-                            ],
-                            action: Action::IdleMode,
-                        },
-                        Vec::new(),
-                        "Awake detiene hypridle: nada auto-dim, lock ni suspend",
-                    ),
-                    info("Current mode", "idle.mode"),
-                ]),
-                section("Manual actions", vec![
-                    action("Lock now", Action::LockNow, "Bloquea la sesión (SUPER+L)"),
-                    action("Suspend", Action::Suspend, "systemctl suspend"),
-                ]),
+                section(
+                    "Idle mode",
+                    vec![
+                        control(
+                            "Mode",
+                            Kind::StateOptions {
+                                state_key: "idle".into(),
+                                options: vec![
+                                    Opt {
+                                        label: "Auto".into(),
+                                        value: "normal".into(),
+                                    },
+                                    Opt {
+                                        label: "Awake".into(),
+                                        value: "awake".into(),
+                                    },
+                                ],
+                                action: Action::IdleMode,
+                            },
+                            Vec::new(),
+                            "Awake detiene hypridle: nada auto-dim, lock ni suspend",
+                        ),
+                        info("Current mode", "idle.mode"),
+                    ],
+                ),
+                section(
+                    "Manual actions",
+                    vec![
+                        action("Lock now", Action::LockNow, "Lock the session (SUPER+L)"),
+                        action("Suspend", Action::Suspend, "systemctl suspend"),
+                    ],
+                ),
             ]),
         },
         Page {
@@ -640,8 +982,17 @@ const POPUP_WIDGETS: &[(&str, &str)] = &[
 
 enum PKind {
     Bool,
-    Int { min: f64, max: f64, step: f64 },
-    Float { min: f64, max: f64, step: f64, decimals: u32 },
+    Int {
+        min: f64,
+        max: f64,
+        step: f64,
+    },
+    Float {
+        min: f64,
+        max: f64,
+        step: f64,
+        decimals: u32,
+    },
 }
 
 struct PKey {
@@ -657,107 +1008,189 @@ struct PSec {
 
 macro_rules! pk {
     ($key:literal, bool) => {
-        PKey { key: $key, kind: PKind::Bool }
+        PKey {
+            key: $key,
+            kind: PKind::Bool,
+        }
     };
     ($key:literal, int, $min:expr, $max:expr, $step:expr) => {
-        PKey { key: $key, kind: PKind::Int { min: $min, max: $max, step: $step } }
+        PKey {
+            key: $key,
+            kind: PKind::Int {
+                min: $min,
+                max: $max,
+                step: $step,
+            },
+        }
     };
     ($key:literal, float, $min:expr, $max:expr, $step:expr, $dec:expr) => {
-        PKey { key: $key, kind: PKind::Float { min: $min, max: $max, step: $step, decimals: $dec } }
+        PKey {
+            key: $key,
+            kind: PKind::Float {
+                min: $min,
+                max: $max,
+                step: $step,
+                decimals: $dec,
+            },
+        }
     };
 }
 
 static PERSONALIZATION: &[PSec] = &[
-    PSec { id: "network", label: "Wifi / Bluetooth", keys: &[
-        pk!("popupWidth", int, 200.0, 4000.0, 10.0),
-        pk!("popupHeight", int, 200.0, 4000.0, 10.0),
-        pk!("powerAnimMs", int, 0.0, 5000.0, 50.0),
-        pk!("busyTimeoutMs", int, 0.0, 60000.0, 500.0),
-        pk!("failClearMs", int, 0.0, 30000.0, 500.0),
-    ]},
-    PSec { id: "volume", label: "Sound", keys: &[
-        pk!("popupWidth", int, 200.0, 2000.0, 10.0),
-        pk!("step", int, 1.0, 50.0, 1.0),
-        pk!("syncDelayMs", int, 0.0, 5000.0, 50.0),
-        pk!("pollMs", int, 100.0, 10000.0, 100.0),
-    ]},
-    PSec { id: "battery", label: "Battery", keys: &[
-        pk!("popupWidth", int, 200.0, 2000.0, 10.0),
-        pk!("lowThreshold", int, 0.0, 100.0, 5.0),
-        pk!("pollMs", int, 100.0, 60000.0, 500.0),
-    ]},
-    PSec { id: "system-monitor", label: "System monitor", keys: &[
-        pk!("popupWidth", int, 200.0, 2000.0, 10.0),
-        pk!("popupHeight", int, 200.0, 2000.0, 10.0),
-        pk!("pollMs", int, 100.0, 60000.0, 500.0),
-        pk!("historyLength", int, 1.0, 600.0, 5.0),
-    ]},
-    PSec { id: "calendar", label: "Calendar", keys: &[
-        pk!("popupWidth", int, 200.0, 4000.0, 10.0),
-        pk!("popupHeight", int, 200.0, 4000.0, 10.0),
-    ]},
-    PSec { id: "clipboard", label: "Clipboard", keys: &[
-        pk!("popupWidth", int, 200.0, 2000.0, 10.0),
-        pk!("popupHeight", int, 200.0, 2000.0, 10.0),
-        pk!("fetchLimit", int, 1.0, 500.0, 1.0),
-    ]},
-    PSec { id: "quicknotes", label: "Notepad", keys: &[
-        pk!("popupWidth", int, 200.0, 2000.0, 10.0),
-        pk!("popupHeight", int, 200.0, 2000.0, 10.0),
-        pk!("saveDebounceMs", int, 0.0, 10000.0, 100.0),
-    ]},
-    PSec { id: "rss-reader", label: "RSS reader", keys: &[
-        pk!("popupWidth", int, 200.0, 2000.0, 10.0),
-        pk!("popupHeight", int, 200.0, 2000.0, 10.0),
-        pk!("refreshMs", int, 10000.0, 3600000.0, 30000.0),
-    ]},
-    PSec { id: "file-search", label: "File search", keys: &[
-        pk!("popupWidth", int, 200.0, 2000.0, 10.0),
-        pk!("popupHeight", int, 200.0, 2000.0, 10.0),
-        pk!("debounceMs", int, 0.0, 5000.0, 50.0),
-    ]},
-    PSec { id: "scale", label: "Scale picker", keys: &[
-        pk!("popupWidth", int, 200.0, 2000.0, 10.0),
-        pk!("popupHeight", int, 200.0, 2000.0, 10.0),
-        pk!("pollMs", int, 50.0, 5000.0, 50.0),
-    ]},
-    PSec { id: "window-controls", label: "Window controls", keys: &[
-        pk!("popupWidth", int, 200.0, 2000.0, 10.0),
-        pk!("popupHeight", int, 200.0, 2000.0, 10.0),
-        pk!("activeOpacity", float, 0.0, 1.0, 0.05, 2),
-        pk!("inactiveOpacity", float, 0.0, 1.0, 0.05, 2),
-        pk!("blurSize", int, 0.0, 24.0, 1.0),
-        pk!("blurPasses", int, 0.0, 10.0, 1.0),
-        pk!("roundness", int, 0.0, 40.0, 1.0),
-    ]},
-    PSec { id: "lock", label: "Lock screen", keys: &[
-        pk!("revealDurationMs", int, 0.0, 5000.0, 50.0),
-        pk!("clockPollMs", int, 100.0, 10000.0, 100.0),
-        pk!("batteryPollMs", int, 100.0, 60000.0, 500.0),
-        pk!("wallpaperBlur", float, 0.0, 1.0, 0.05, 2),
-        pk!("wallpaperDim", float, 0.0, 0.85, 0.05, 2),
-        pk!("showClock", bool),
-        pk!("showBattery", bool),
-        pk!("showPower", bool),
-        pk!("clockScale", float, 0.6, 1.6, 0.05, 2),
-    ]},
-    PSec { id: "updater", label: "Updater", keys: &[
-        pk!("popupWidth", int, 200.0, 4000.0, 10.0),
-        pk!("popupHeight", int, 200.0, 4000.0, 10.0),
-    ]},
-    PSec { id: "idle", label: "Idle", keys: &[
-        pk!("popupWidth", int, 200.0, 2000.0, 10.0),
-        pk!("popupHeight", int, 200.0, 2000.0, 10.0),
-    ]},
-    PSec { id: "tray", label: "System tray", keys: &[
-        pk!("tint", bool),
-        pk!("useAccent", bool),
-        pk!("size", int, 8.0, 48.0, 2.0),
-    ]},
-    PSec { id: "widgets", label: "Desktop widgets", keys: &[
-        pk!("redactorWidth", int, 200.0, 8000.0, 10.0),
-        pk!("redactorHeight", int, 200.0, 8000.0, 10.0),
-    ]},
+    PSec {
+        id: "network",
+        label: "Wifi / Bluetooth",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 4000.0, 10.0),
+            pk!("popupHeight", int, 200.0, 4000.0, 10.0),
+            pk!("powerAnimMs", int, 0.0, 5000.0, 50.0),
+            pk!("busyTimeoutMs", int, 0.0, 60000.0, 500.0),
+            pk!("failClearMs", int, 0.0, 30000.0, 500.0),
+        ],
+    },
+    PSec {
+        id: "volume",
+        label: "Sound",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 2000.0, 10.0),
+            pk!("step", int, 1.0, 50.0, 1.0),
+            pk!("syncDelayMs", int, 0.0, 5000.0, 50.0),
+            pk!("pollMs", int, 100.0, 10000.0, 100.0),
+        ],
+    },
+    PSec {
+        id: "battery",
+        label: "Battery",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 2000.0, 10.0),
+            pk!("lowThreshold", int, 0.0, 100.0, 5.0),
+            pk!("pollMs", int, 100.0, 60000.0, 500.0),
+        ],
+    },
+    PSec {
+        id: "system-monitor",
+        label: "System monitor",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 2000.0, 10.0),
+            pk!("popupHeight", int, 200.0, 2000.0, 10.0),
+            pk!("pollMs", int, 100.0, 60000.0, 500.0),
+            pk!("historyLength", int, 1.0, 600.0, 5.0),
+        ],
+    },
+    PSec {
+        id: "calendar",
+        label: "Calendar",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 4000.0, 10.0),
+            pk!("popupHeight", int, 200.0, 4000.0, 10.0),
+        ],
+    },
+    PSec {
+        id: "clipboard",
+        label: "Clipboard",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 2000.0, 10.0),
+            pk!("popupHeight", int, 200.0, 2000.0, 10.0),
+            pk!("fetchLimit", int, 1.0, 500.0, 1.0),
+        ],
+    },
+    PSec {
+        id: "quicknotes",
+        label: "Notepad",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 2000.0, 10.0),
+            pk!("popupHeight", int, 200.0, 2000.0, 10.0),
+            pk!("saveDebounceMs", int, 0.0, 10000.0, 100.0),
+        ],
+    },
+    PSec {
+        id: "rss-reader",
+        label: "RSS reader",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 2000.0, 10.0),
+            pk!("popupHeight", int, 200.0, 2000.0, 10.0),
+            pk!("refreshMs", int, 10000.0, 3600000.0, 30000.0),
+        ],
+    },
+    PSec {
+        id: "file-search",
+        label: "File search",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 2000.0, 10.0),
+            pk!("popupHeight", int, 200.0, 2000.0, 10.0),
+            pk!("debounceMs", int, 0.0, 5000.0, 50.0),
+        ],
+    },
+    PSec {
+        id: "scale",
+        label: "Scale picker",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 2000.0, 10.0),
+            pk!("popupHeight", int, 200.0, 2000.0, 10.0),
+            pk!("pollMs", int, 50.0, 5000.0, 50.0),
+        ],
+    },
+    PSec {
+        id: "window-controls",
+        label: "Window controls",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 2000.0, 10.0),
+            pk!("popupHeight", int, 200.0, 2000.0, 10.0),
+            pk!("activeOpacity", float, 0.0, 1.0, 0.05, 2),
+            pk!("inactiveOpacity", float, 0.0, 1.0, 0.05, 2),
+            pk!("blurSize", int, 0.0, 24.0, 1.0),
+            pk!("blurPasses", int, 0.0, 10.0, 1.0),
+            pk!("roundness", int, 0.0, 40.0, 1.0),
+        ],
+    },
+    PSec {
+        id: "lock",
+        label: "Lock screen",
+        keys: &[
+            pk!("revealDurationMs", int, 0.0, 5000.0, 50.0),
+            pk!("clockPollMs", int, 100.0, 10000.0, 100.0),
+            pk!("batteryPollMs", int, 100.0, 60000.0, 500.0),
+            pk!("wallpaperBlur", float, 0.0, 1.0, 0.05, 2),
+            pk!("wallpaperDim", float, 0.0, 0.85, 0.05, 2),
+            pk!("showClock", bool),
+            pk!("showBattery", bool),
+            pk!("showPower", bool),
+            pk!("clockScale", float, 0.6, 1.6, 0.05, 2),
+        ],
+    },
+    PSec {
+        id: "updater",
+        label: "Updater",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 4000.0, 10.0),
+            pk!("popupHeight", int, 200.0, 4000.0, 10.0),
+        ],
+    },
+    PSec {
+        id: "idle",
+        label: "Idle",
+        keys: &[
+            pk!("popupWidth", int, 200.0, 2000.0, 10.0),
+            pk!("popupHeight", int, 200.0, 2000.0, 10.0),
+        ],
+    },
+    PSec {
+        id: "tray",
+        label: "System tray",
+        keys: &[
+            pk!("tint", bool),
+            pk!("useAccent", bool),
+            pk!("size", int, 8.0, 48.0, 2.0),
+        ],
+    },
+    PSec {
+        id: "widgets",
+        label: "Desktop widgets",
+        keys: &[
+            pk!("redactorWidth", int, 200.0, 8000.0, 10.0),
+            pk!("redactorHeight", int, 200.0, 8000.0, 10.0),
+        ],
+    },
 ];
 
 fn pretty(key: &str) -> String {
@@ -788,13 +1221,30 @@ fn popup_controls() -> Vec<Section> {
                 PKind::Bool => controls.push(control(&label, Kind::Toggle, full, "")),
                 PKind::Int { min, max, step } => controls.push(control(
                     &label,
-                    Kind::Stepper { step: *step, min: *min, max: *max, decimals: 0, unit: "" },
+                    Kind::Stepper {
+                        step: *step,
+                        min: *min,
+                        max: *max,
+                        decimals: 0,
+                        unit: "",
+                    },
                     full,
                     "",
                 )),
-                PKind::Float { min, max, step, decimals } => controls.push(control(
+                PKind::Float {
+                    min,
+                    max,
+                    step,
+                    decimals,
+                } => controls.push(control(
                     &label,
-                    Kind::Stepper { step: *step, min: *min, max: *max, decimals: *decimals, unit: "" },
+                    Kind::Stepper {
+                        step: *step,
+                        min: *min,
+                        max: *max,
+                        decimals: *decimals,
+                        unit: "",
+                    },
                     full,
                     "",
                 )),
@@ -816,7 +1266,7 @@ fn timex_controls() -> Vec<Section> {
                 Opt { label: "Open-Meteo (free, city or lat,lon)".into(), value: "open-meteo".into() },
                 Opt { label: "wttr.in (free, city)".into(), value: "wttr".into() },
                 Opt { label: "OpenWeatherMap (needs key)".into(), value: "openweather".into() },
-            ]), timex("provider"), "Fuente de datos meteorológicos"),
+            ]), timex("provider"), "Weather data provider"),
             control("Temperature unit", Kind::Options(vec![
                 Opt { label: "Celsius".into(), value: "metric".into() },
                 Opt { label: "Fahrenheit".into(), value: "imperial".into() },
@@ -827,9 +1277,9 @@ fn timex_controls() -> Vec<Section> {
             action("OpenWeather API key", Action::Prompt {
                 prompt: "API key".into(),
                 prefix: "TIMEX=\"${TIMEX_CLI:-$HOME/.local/bin/timex}\"; [ -x \"$TIMEX\" ] || TIMEX=timex; \"$TIMEX\" keys set OPENWEATHER_KEY".into(),
-            }, "Guarda la key en el state de timex (chmod 600)"),
-            action("Test key", Action::Shell("TIMEX=\"${TIMEX_CLI:-$HOME/.local/bin/timex}\"; [ -x \"$TIMEX\" ] || TIMEX=timex; \"$TIMEX\" test".into()), "Prueba la API key"),
-            action("Refresh data", Action::Shell("TIMEX=\"${TIMEX_CLI:-$HOME/.local/bin/timex}\"; [ -x \"$TIMEX\" ] || TIMEX=timex; \"$TIMEX\" --invalidate >/dev/null 2>&1; \"$TIMEX\" --getdata >/dev/null 2>&1".into()), "Invalida y vuelve a pedir datos"),
+            }, "Store the key in timex state (chmod 600)"),
+            action("Test key", Action::Shell("TIMEX=\"${TIMEX_CLI:-$HOME/.local/bin/timex}\"; [ -x \"$TIMEX\" ] || TIMEX=timex; \"$TIMEX\" test".into()), "Test the API key"),
+            action("Refresh data", Action::Shell("TIMEX=\"${TIMEX_CLI:-$HOME/.local/bin/timex}\"; [ -x \"$TIMEX\" ] || TIMEX=timex; \"$TIMEX\" --invalidate >/dev/null 2>&1; \"$TIMEX\" --getdata >/dev/null 2>&1".into()), "Invalidate and fetch data again"),
             info("Engine status", "timex.status"),
         ]),
         section("Timex layout", vec![
@@ -841,7 +1291,7 @@ fn timex_controls() -> Vec<Section> {
             t("Show time", "forecastShowTime"),
             t("Show icon", "forecastShowIcon"),
             t("Show temp", "forecastShowTemp"),
-            action("Rotate order", Action::RotateForecastOrder, "Rota el orden time · icon · temp"),
+            action("Rotate order", Action::RotateForecastOrder, "Rotate the time · icon · temp order"),
             t("Clock seconds", "clockShowSeconds"),
             t("Clock date", "clockShowDate"),
             stepper("Forecast size", &["timex", "forecastSize"], 0.1, 0.8, 1.4, 1, "x", "0.8 – 1.4"),
@@ -871,80 +1321,315 @@ fn timex_controls() -> Vec<Section> {
 
 // ───────────────────────────── bar style / borders ─────────────────────────────
 
-pub fn border_sections(prefix_help: &str) -> Vec<Section> {
-    vec![border_controls(prefix_help)]
+pub fn border_sections() -> Vec<Section> {
+    vec![border_controls()]
 }
 
-fn border_controls(prefix_help: &str) -> Section {
-    section(&format!("Window borders — {}", prefix_help), vec![
-        toggle("Follow palette", &["bar", "borderFollowPalette"], "Bordes de ventana siguen los acentos de la paleta"),
-        options("Active color", &["bar", "borderActive"], &[("Empty (palette)", "")], "Hex #rrggbb; vacío = derivado de la paleta"),
-        options("Active gradient", &["bar", "borderGradientActive"], &[("Off", "false"), ("On", "true")], "Gradiente en el borde activo"),
-        options("Active 2nd color", &["bar", "borderActive2"], &[("Empty", "")], "Segundo color del gradiente activo"),
-        stepper("Active angle", &["bar", "borderAngleActive"], 15.0, 0.0, 360.0, 0, "°", "0 – 360"),
-        options("Inactive color", &["bar", "borderInactive"], &[("Empty (palette)", "")], "Hex #rrggbb; vacío = derivado de la paleta"),
-        options("Inactive gradient", &["bar", "borderGradientInactive"], &[("Off", "false"), ("On", "true")], "Gradiente en el borde inactivo"),
-        options("Inactive 2nd color", &["bar", "borderInactive2"], &[("Empty", "")], "Segundo color del gradiente inactivo"),
-        stepper("Inactive angle", &["bar", "borderAngleInactive"], 15.0, 0.0, 360.0, 0, "°", "0 – 360"),
-    ])
+fn border_controls() -> Section {
+    section(
+        "Window borders",
+        vec![
+            toggle(
+                "Follow palette",
+                &["bar", "borderFollowPalette"],
+                "Window borders follow the palette accents",
+            ),
+            options(
+                "Active color",
+                &["bar", "borderActive"],
+                &[("Empty (palette)", "")],
+                "Hex #rrggbb; empty = derived from the palette",
+            ),
+            options(
+                "Active gradient",
+                &["bar", "borderGradientActive"],
+                &[("Off", "false"), ("On", "true")],
+                "Gradient on the active border",
+            ),
+            options(
+                "Active 2nd color",
+                &["bar", "borderActive2"],
+                &[("Empty", "")],
+                "Second color of the active gradient",
+            ),
+            stepper(
+                "Active angle",
+                &["bar", "borderAngleActive"],
+                15.0,
+                0.0,
+                360.0,
+                0,
+                "°",
+                "0 – 360",
+            ),
+            options(
+                "Inactive color",
+                &["bar", "borderInactive"],
+                &[("Empty (palette)", "")],
+                "Hex #rrggbb; empty = derived from the palette",
+            ),
+            options(
+                "Inactive gradient",
+                &["bar", "borderGradientInactive"],
+                &[("Off", "false"), ("On", "true")],
+                "Gradient on the inactive border",
+            ),
+            options(
+                "Inactive 2nd color",
+                &["bar", "borderInactive2"],
+                &[("Empty", "")],
+                "Second color of the inactive gradient",
+            ),
+            stepper(
+                "Inactive angle",
+                &["bar", "borderAngleInactive"],
+                15.0,
+                0.0,
+                360.0,
+                0,
+                "°",
+                "0 – 360",
+            ),
+        ],
+    )
 }
 
 fn bar_style_controls() -> Vec<Section> {
     vec![
-        section("Presets", vec![
-            options("Style preset", &["bar", "stylePreset"], &[
-                ("Modular", "modular"), ("Solid", "solid"), ("Fill", "fill"),
-            ], "Aplica un bundle de flags (pillBg/pillSolid/barBg/edgeGap)"),
-        ]),
-        section("Shape", vec![
-            stepper("Roundness", &["bar", "roundness"], 0.1, 0.0, 1.0, 1, "", "0 – 1"),
-            stepper("Thickness", &["bar", "thickness"], 4.0, 24.0, 96.0, 0, "px", "24 – 96"),
-            stepper("Edge margin", &["bar", "edgeGap"], 2.0, 0.0, 24.0, 0, "px", "0 – 24"),
-            stepper("Bar opacity", &["bar", "barOpacity"], 0.05, 0.2, 1.0, 2, "", "0.2 – 1.0"),
-        ]),
-        section("Fill", vec![
-            toggle("Island fill", &["bar", "pillBg"], "Fondo de las islas/pills"),
-            toggle("Solid fill", &["bar", "pillSolid"], "Relleno sólido de las islas"),
-            toggle("Unified bar", &["bar", "barBg"], "Fondo unificado de barra completa"),
-            toggle("Drag modules", &["bar", "dragModules"], "Permite arrastrar módulos en la barra"),
-        ]),
-        section("Font", vec![
-            text("Font", &["bar", "font"], "Hack Nerd Font", 128, "Fuente del shell; vacío resetea a Hack Nerd Font"),
-            text("Time format", &["bar", "timeFormat"], "HH:mm:ss", 64, "Formato Qt (QML) del reloj"),
-            text("Date format", &["bar", "dateFormat"], "dddd, MMMM dd", 64, "Formato Qt (QML) de la fecha"),
-        ]),
-        section("Borders", vec![
-            stepper("Border width", &["bar", "borderWidth"], 1.0, 0.0, 8.0, 0, "px", "0 – 8"),
-            options("Border color", &["bar", "borderColor"], &[
-                ("surface1", "surface1"), ("surface0", "surface0"), ("text", "text"), ("red", "red"),
-                ("blue", "blue"), ("green", "green"), ("yellow", "yellow"), ("mauve", "mauve"), ("teal", "teal"),
-            ], "Rol de color del borde del bar"),
-        ]),
-        border_controls("bordes de ventana"),
+        section(
+            "Presets",
+            vec![options(
+                "Style preset",
+                &["bar", "stylePreset"],
+                &[("Modular", "modular"), ("Solid", "solid"), ("Fill", "fill")],
+                "Applies a bundle of flags (pillBg/pillSolid/barBg/edgeGap)",
+            )],
+        ),
+        section(
+            "Shape",
+            vec![
+                stepper(
+                    "Roundness",
+                    &["bar", "roundness"],
+                    0.1,
+                    0.0,
+                    1.0,
+                    1,
+                    "",
+                    "0 – 1",
+                ),
+                stepper(
+                    "Thickness",
+                    &["bar", "thickness"],
+                    4.0,
+                    24.0,
+                    96.0,
+                    0,
+                    "px",
+                    "24 – 96",
+                ),
+                stepper(
+                    "Edge margin",
+                    &["bar", "edgeGap"],
+                    2.0,
+                    0.0,
+                    24.0,
+                    0,
+                    "px",
+                    "0 – 24",
+                ),
+                stepper(
+                    "Bar opacity",
+                    &["bar", "barOpacity"],
+                    0.05,
+                    0.2,
+                    1.0,
+                    2,
+                    "",
+                    "0.2 – 1.0",
+                ),
+            ],
+        ),
+        section(
+            "Fill",
+            vec![
+                toggle("Island fill", &["bar", "pillBg"], "Island/pill background"),
+                toggle(
+                    "Solid fill",
+                    &["bar", "pillSolid"],
+                    "Solid fill for islands",
+                ),
+                toggle(
+                    "Unified bar",
+                    &["bar", "barBg"],
+                    "Unified full-bar background",
+                ),
+                toggle(
+                    "Drag modules",
+                    &["bar", "dragModules"],
+                    "Allow dragging modules on the bar",
+                ),
+            ],
+        ),
+        section(
+            "Font",
+            vec![
+                text(
+                    "Font",
+                    &["bar", "font"],
+                    "Hack Nerd Font",
+                    128,
+                    "Shell font; empty resets to Hack Nerd Font",
+                ),
+                text(
+                    "Time format",
+                    &["bar", "timeFormat"],
+                    "HH:mm:ss",
+                    64,
+                    "Qt (QML) clock format",
+                ),
+                text(
+                    "Date format",
+                    &["bar", "dateFormat"],
+                    "dddd, MMMM dd",
+                    64,
+                    "Qt (QML) date format",
+                ),
+            ],
+        ),
+        section(
+            "Borders",
+            vec![
+                stepper(
+                    "Border width",
+                    &["bar", "borderWidth"],
+                    1.0,
+                    0.0,
+                    8.0,
+                    0,
+                    "px",
+                    "0 – 8",
+                ),
+                options(
+                    "Border color",
+                    &["bar", "borderColor"],
+                    &[
+                        ("surface1", "surface1"),
+                        ("surface0", "surface0"),
+                        ("text", "text"),
+                        ("red", "red"),
+                        ("blue", "blue"),
+                        ("green", "green"),
+                        ("yellow", "yellow"),
+                        ("mauve", "mauve"),
+                        ("teal", "teal"),
+                    ],
+                    "Bar border color role",
+                ),
+            ],
+        ),
+        border_controls(),
     ]
 }
 
 fn classic_controls() -> Vec<Section> {
     vec![
-        section("Style & size", vec![
-            options("Style", &["classicbar", "style"], &[
-                ("Modular", "modular"), ("Solid", "solid"), ("Fill", "fill"),
-            ], ""),
-            options("Time format", &["classicbar", "timeFormat"], &[
-                ("24h :ss", "HH:mm:ss"), ("24h :mm", "HH:mm"), ("12h", "h:mm a"),
-            ], ""),
-            toggle("Distinct pills", &["classicbar", "distinctPills"], "Pills separadas por módulo"),
-            toggle("Autohide", &["classicbar", "autohide"], "Oculta la barra hasta acercar el cursor"),
-            stepper("Roundness", &["classicbar", "roundness"], 0.1, 0.0, 1.0, 1, "", "0 – 1"),
-            stepper("Thickness", &["classicbar", "thickness"], 4.0, 24.0, 120.0, 0, "px", "24 – 120"),
-            stepper("Bar opacity", &["classicbar", "opacity"], 5.0, 20.0, 100.0, 0, "%", "20 – 100"),
-            stepper("Width", &["classicbar", "widthPercent"], 5.0, 40.0, 100.0, 0, "%", "40 – 100"),
-            stepper("Hide delay", &["classicbar", "autohideTimeout"], 100.0, 200.0, 5000.0, 0, "ms", "200 – 5000"),
-        ]),
-        section("Actions", vec![
-            action("Mirror bar layout", Action::ClassicMirror, "Importa módulos activos del bar de zonas"),
-            action("Classic defaults", Action::ClassicDefaults, "Resetea classicbar (mantiene posición)"),
-        ]),
+        section(
+            "Style & size",
+            vec![
+                options(
+                    "Style",
+                    &["classicbar", "style"],
+                    &[("Modular", "modular"), ("Solid", "solid"), ("Fill", "fill")],
+                    "",
+                ),
+                options(
+                    "Time format",
+                    &["classicbar", "timeFormat"],
+                    &[
+                        ("24h :ss", "HH:mm:ss"),
+                        ("24h :mm", "HH:mm"),
+                        ("12h", "h:mm a"),
+                    ],
+                    "",
+                ),
+                toggle(
+                    "Distinct pills",
+                    &["classicbar", "distinctPills"],
+                    "Separate pill per module",
+                ),
+                toggle(
+                    "Autohide",
+                    &["classicbar", "autohide"],
+                    "Hide the bar until the cursor approaches",
+                ),
+                stepper(
+                    "Roundness",
+                    &["classicbar", "roundness"],
+                    0.1,
+                    0.0,
+                    1.0,
+                    1,
+                    "",
+                    "0 – 1",
+                ),
+                stepper(
+                    "Thickness",
+                    &["classicbar", "thickness"],
+                    4.0,
+                    24.0,
+                    120.0,
+                    0,
+                    "px",
+                    "24 – 120",
+                ),
+                stepper(
+                    "Bar opacity",
+                    &["classicbar", "opacity"],
+                    5.0,
+                    20.0,
+                    100.0,
+                    0,
+                    "%",
+                    "20 – 100",
+                ),
+                stepper(
+                    "Width",
+                    &["classicbar", "widthPercent"],
+                    5.0,
+                    40.0,
+                    100.0,
+                    0,
+                    "%",
+                    "40 – 100",
+                ),
+                stepper(
+                    "Hide delay",
+                    &["classicbar", "autohideTimeout"],
+                    100.0,
+                    200.0,
+                    5000.0,
+                    0,
+                    "ms",
+                    "200 – 5000",
+                ),
+            ],
+        ),
+        section(
+            "Actions",
+            vec![
+                action(
+                    "Mirror bar layout",
+                    Action::ClassicMirror,
+                    "Import enabled modules from the zones bar",
+                ),
+                action(
+                    "Classic defaults",
+                    Action::ClassicDefaults,
+                    "Reset classicbar (keeps position)",
+                ),
+            ],
+        ),
     ]
 }
 
@@ -975,9 +1660,18 @@ fn fill_control(label: &str, path: Vec<String>) -> Control {
     Control {
         label: label.to_string(),
         kind: Kind::Options(vec![
-            Opt { label: "Default".into(), value: "default".into() },
-            Opt { label: "Filled".into(), value: "on".into() },
-            Opt { label: "None".into(), value: "off".into() },
+            Opt {
+                label: "Default".into(),
+                value: "default".into(),
+            },
+            Opt {
+                label: "Filled".into(),
+                value: "on".into(),
+            },
+            Opt {
+                label: "None".into(),
+                value: "off".into(),
+            },
         ]),
         path,
         help: String::new(),
@@ -986,44 +1680,153 @@ fn fill_control(label: &str, path: Vec<String>) -> Control {
 }
 
 fn modules_controls() -> Vec<Section> {
-    let mut sections = vec![section("Global", vec![
-        text("Icon color", &["bar", "iconColor"], "default (module roles)", 64, "Rol colors.* o #hex; aplica a módulos sin color propio"),
-    ])];
+    let mut sections = vec![section(
+        "Global",
+        vec![text(
+            "Icon color",
+            &["bar", "iconColor"],
+            "default (module roles)",
+            64,
+            "colors.* role or #hex; applies to modules without their own color",
+        )],
+    )];
     for (id, label, icon_ok) in MODULES {
         let m = |key: &str| p(&["bar", "modules", id, key]);
         let mut controls = vec![];
         if *icon_ok {
-            controls.push(control("Icon", Kind::Text { placeholder: "default".into(), max: 4 }, m("icon"), "Glyph de Nerd Font (máx 4)"))
+            controls.push(control(
+                "Icon",
+                Kind::Text {
+                    placeholder: "default".into(),
+                    max: 4,
+                },
+                m("icon"),
+                "Nerd Font glyph (max 4)",
+            ))
         }
-        controls.push(control("Color", Kind::Text { placeholder: "default".into(), max: 64 }, m("color"), "Rol colors.* o #hex"));
-        controls.push(control("Accent", Kind::Text { placeholder: "default".into(), max: 64 }, m("accent"), "Rol de acento"));
+        controls.push(control(
+            "Color",
+            Kind::Text {
+                placeholder: "default".into(),
+                max: 64,
+            },
+            m("color"),
+            "Rol colors.* o #hex",
+        ));
+        controls.push(control(
+            "Accent",
+            Kind::Text {
+                placeholder: "default".into(),
+                max: 64,
+            },
+            m("accent"),
+            "Accent role",
+        ));
         controls.push(fill_control("Fill", m("fill")));
         match *id {
             "time" => {
-                controls.push(text("Clock format", &["bar", "timeFormat"], "HH:mm:ss", 64, "Formato Qt"));
-                controls.push(control("Size", Kind::Stepper { step: 1.0, min: 0.0, max: 48.0, decimals: 0, unit: "px" }, m("size"), "0 = default del módulo"));
-                controls.push(control("Effect", Kind::Options(vec![
-                    Opt { label: "No effect".into(), value: String::new() },
-                    Opt { label: "Typewriter".into(), value: "typewriter".into() },
-                ]), m("effect"), ""));
-                controls.push(control("Cursor", Kind::Toggle, m("cursor"), "Cursor parpadeante"));
+                controls.push(text(
+                    "Clock format",
+                    &["bar", "timeFormat"],
+                    "HH:mm:ss",
+                    64,
+                    "Formato Qt",
+                ));
+                controls.push(control(
+                    "Size",
+                    Kind::Stepper {
+                        step: 1.0,
+                        min: 0.0,
+                        max: 48.0,
+                        decimals: 0,
+                        unit: "px",
+                    },
+                    m("size"),
+                    "0 = module default",
+                ));
+                controls.push(control(
+                    "Effect",
+                    Kind::Options(vec![
+                        Opt {
+                            label: "No effect".into(),
+                            value: String::new(),
+                        },
+                        Opt {
+                            label: "Typewriter".into(),
+                            value: "typewriter".into(),
+                        },
+                    ]),
+                    m("effect"),
+                    "",
+                ));
+                controls.push(control(
+                    "Cursor",
+                    Kind::Toggle,
+                    m("cursor"),
+                    "Cursor parpadeante",
+                ));
             }
             "date" => {
-                controls.push(text("Date format", &["bar", "dateFormat"], "dddd, MMMM dd", 64, "Formato Qt"));
-                controls.push(control("Size", Kind::Stepper { step: 1.0, min: 0.0, max: 48.0, decimals: 0, unit: "px" }, m("size"), "0 = default del módulo"));
+                controls.push(text(
+                    "Date format",
+                    &["bar", "dateFormat"],
+                    "dddd, MMMM dd",
+                    64,
+                    "Formato Qt",
+                ));
+                controls.push(control(
+                    "Size",
+                    Kind::Stepper {
+                        step: 1.0,
+                        min: 0.0,
+                        max: 48.0,
+                        decimals: 0,
+                        unit: "px",
+                    },
+                    m("size"),
+                    "0 = module default",
+                ));
             }
             "workspaces" => {
-                controls.push(control("Marker", Kind::Options(vec![
-                    Opt { label: "Numbers".into(), value: "number".into() },
-                    Opt { label: "Dots".into(), value: "dot".into() },
-                    Opt { label: "Letters".into(), value: "letter".into() },
-                    Opt { label: "Custom".into(), value: "custom".into() },
-                ]), m("marker"), ""));
-                let slots = ["active", "activeText", "occupied", "empty", "hover", "marker", "markerEmpty"];
+                controls.push(control(
+                    "Marker",
+                    Kind::Options(vec![
+                        Opt {
+                            label: "Numbers".into(),
+                            value: "number".into(),
+                        },
+                        Opt {
+                            label: "Dots".into(),
+                            value: "dot".into(),
+                        },
+                        Opt {
+                            label: "Letters".into(),
+                            value: "letter".into(),
+                        },
+                        Opt {
+                            label: "Custom".into(),
+                            value: "custom".into(),
+                        },
+                    ]),
+                    m("marker"),
+                    "",
+                ));
+                let slots = [
+                    "active",
+                    "activeText",
+                    "occupied",
+                    "empty",
+                    "hover",
+                    "marker",
+                    "markerEmpty",
+                ];
                 for slot in slots {
                     controls.push(control(
                         &format!("Color: {}", pretty(slot)),
-                        Kind::Text { placeholder: "default".into(), max: 64 },
+                        Kind::Text {
+                            placeholder: "default".into(),
+                            max: 64,
+                        },
                         m(&format!("colors.{}", slot)),
                         "Rol colors.* o #hex",
                     ));
@@ -1040,62 +1843,228 @@ fn modules_controls() -> Vec<Section> {
 
 fn launcher_controls() -> Vec<Section> {
     vec![
-        section("Position", vec![
-            options("Position", &["launcher", "position"], &[
-                ("Center", "center"), ("Top", "top"), ("Bottom", "bottom"), ("Left", "left"), ("Right", "right"),
-            ], ""),
-        ]),
-        section("Size", vec![
-            stepper("Width", &["launcher", "width"], 40.0, 320.0, 1280.0, 0, "px", "320 – 1280"),
-            stepper("Visible apps", &["launcher", "maxApps"], 1.0, 4.0, 20.0, 0, "", "4 – 20"),
-            stepper("Margin", &["launcher", "margin"], 8.0, -200.0, 200.0, 0, "px", "-200 – 200"),
-            stepper("Row height", &["launcher", "rowHeight"], 4.0, 28.0, 80.0, 0, "px", "28 – 80"),
-        ]),
-        section("Borders", vec![
-            stepper("Border width", &["launcher", "borderWidth"], 1.0, 0.0, 4.0, 0, "px", "0 oculta el borde"),
-            stepper("Radius", &["launcher", "radius"], 2.0, 0.0, 28.0, 0, "px", "0 – 28"),
-            options("Border color", &["launcher", "borderColor"], &[
-                ("surface1", "surface1"), ("surface0", "surface0"), ("text", "text"), ("red", "red"),
-                ("blue", "blue"), ("green", "green"), ("yellow", "yellow"), ("mauve", "mauve"), ("teal", "teal"),
-            ], "Rol de color"),
-        ]),
-        section("Behavior", vec![
-            toggle("Avoid bar", &["launcher", "avoidBar"], "Evita solaparse con el bar"),
-            toggle("Show icons", &["launcher", "showIcons"], "Muestra iconos de aplicaciones"),
-        ]),
-        section("Content alignment", vec![
-            options("Align", &["launcher", "align"], &[
-                ("Left", "left"), ("Center", "center"), ("Right", "right"),
-            ], ""),
-        ]),
+        section(
+            "Position",
+            vec![options(
+                "Position",
+                &["launcher", "position"],
+                &[
+                    ("Center", "center"),
+                    ("Top", "top"),
+                    ("Bottom", "bottom"),
+                    ("Left", "left"),
+                    ("Right", "right"),
+                ],
+                "",
+            )],
+        ),
+        section(
+            "Size",
+            vec![
+                stepper(
+                    "Width",
+                    &["launcher", "width"],
+                    40.0,
+                    320.0,
+                    1280.0,
+                    0,
+                    "px",
+                    "320 – 1280",
+                ),
+                stepper(
+                    "Visible apps",
+                    &["launcher", "maxApps"],
+                    1.0,
+                    4.0,
+                    20.0,
+                    0,
+                    "",
+                    "4 – 20",
+                ),
+                stepper(
+                    "Margin",
+                    &["launcher", "margin"],
+                    8.0,
+                    -200.0,
+                    200.0,
+                    0,
+                    "px",
+                    "-200 – 200",
+                ),
+                stepper(
+                    "Row height",
+                    &["launcher", "rowHeight"],
+                    4.0,
+                    28.0,
+                    80.0,
+                    0,
+                    "px",
+                    "28 – 80",
+                ),
+            ],
+        ),
+        section(
+            "Borders",
+            vec![
+                stepper(
+                    "Border width",
+                    &["launcher", "borderWidth"],
+                    1.0,
+                    0.0,
+                    4.0,
+                    0,
+                    "px",
+                    "0 hides the border",
+                ),
+                stepper(
+                    "Radius",
+                    &["launcher", "radius"],
+                    2.0,
+                    0.0,
+                    28.0,
+                    0,
+                    "px",
+                    "0 – 28",
+                ),
+                options(
+                    "Border color",
+                    &["launcher", "borderColor"],
+                    &[
+                        ("surface1", "surface1"),
+                        ("surface0", "surface0"),
+                        ("text", "text"),
+                        ("red", "red"),
+                        ("blue", "blue"),
+                        ("green", "green"),
+                        ("yellow", "yellow"),
+                        ("mauve", "mauve"),
+                        ("teal", "teal"),
+                    ],
+                    "Color role",
+                ),
+            ],
+        ),
+        section(
+            "Behavior",
+            vec![
+                toggle(
+                    "Avoid bar",
+                    &["launcher", "avoidBar"],
+                    "Avoid overlapping the bar",
+                ),
+                toggle(
+                    "Show icons",
+                    &["launcher", "showIcons"],
+                    "Show application icons",
+                ),
+            ],
+        ),
+        section(
+            "Content alignment",
+            vec![options(
+                "Align",
+                &["launcher", "align"],
+                &[("Left", "left"), ("Center", "center"), ("Right", "right")],
+                "",
+            )],
+        ),
     ]
 }
 
 // ───────────────────────────── notifications ─────────────────────────────
 
 fn notification_controls() -> Vec<Section> {
-    vec![
-        section("Notifications layout", vec![
-            stepper("Width", &["notifications", "width"], 5.0, 0.0, 1200.0, 0, "px", ""),
-            stepper("Max height (0 = auto)", &["notifications", "maxHeight"], 5.0, 0.0, 2000.0, 0, "px", ""),
-            stepper("Shadow blur", &["notifications", "shadowBlur"], 1.0, 0.0, 80.0, 0, "px", ""),
-            stepper("Shadow offset", &["notifications", "shadowOffset"], 1.0, 0.0, 40.0, 0, "px", ""),
-            options("Window shadow", &["notifications", "shadow"], &[
-                ("Off", "0"), ("On", "1"),
-            ], ""),
-            options("Position", &["notifications", "position"], &[
-                ("Top Left", "0"), ("Top Center", "1"), ("Top Right", "2"),
-                ("Bottom Left", "3"), ("Bottom Center", "4"), ("Bottom Right", "5"),
-            ], ""),
-            control("Do Not Disturb", Kind::Action(Action::DndToggle), Vec::new(), "Silencia los popups (archivo de estado)"),
-        ]),
-    ]
+    vec![section(
+        "Notifications layout",
+        vec![
+            stepper(
+                "Width",
+                &["notifications", "width"],
+                5.0,
+                0.0,
+                1200.0,
+                0,
+                "px",
+                "",
+            ),
+            stepper(
+                "Max height (0 = auto)",
+                &["notifications", "maxHeight"],
+                5.0,
+                0.0,
+                2000.0,
+                0,
+                "px",
+                "",
+            ),
+            stepper(
+                "Shadow blur",
+                &["notifications", "shadowBlur"],
+                1.0,
+                0.0,
+                80.0,
+                0,
+                "px",
+                "",
+            ),
+            stepper(
+                "Shadow offset",
+                &["notifications", "shadowOffset"],
+                1.0,
+                0.0,
+                40.0,
+                0,
+                "px",
+                "",
+            ),
+            options(
+                "Window shadow",
+                &["notifications", "shadow"],
+                &[("Off", "0"), ("On", "1")],
+                "",
+            ),
+            options(
+                "Position",
+                &["notifications", "position"],
+                &[
+                    ("Top Left", "0"),
+                    ("Top Center", "1"),
+                    ("Top Right", "2"),
+                    ("Bottom Left", "3"),
+                    ("Bottom Center", "4"),
+                    ("Bottom Right", "5"),
+                ],
+                "",
+            ),
+            control(
+                "Do Not Disturb",
+                Kind::Action(Action::DndToggle),
+                Vec::new(),
+                "Silence popups (state file)",
+            ),
+        ],
+    )]
 }
 
-
 pub const HYPR_SLIDERS: &[(&str, &str, f64, f64, f64, f64, &str)] = &[
-    ("active_opacity", "Active Opacity", 0.85, 0.30, 1.0, 0.05, "2"),
-    ("inactive_opacity", "Inactive Opacity", 0.80, 0.30, 1.0, 0.05, "2"),
+    (
+        "active_opacity",
+        "Active Opacity",
+        0.85,
+        0.30,
+        1.0,
+        0.05,
+        "2",
+    ),
+    (
+        "inactive_opacity",
+        "Inactive Opacity",
+        0.80,
+        0.30,
+        1.0,
+        0.05,
+        "2",
+    ),
     ("rounding", "Rounding", 20.0, 0.0, 35.0, 1.0, "0"),
     ("blur_size", "Blur Size", 8.0, 0.0, 24.0, 1.0, "0"),
     ("blur_passes", "Blur Passes", 3.0, 0.0, 10.0, 1.0, "0"),
@@ -1103,9 +2072,33 @@ pub const HYPR_SLIDERS: &[(&str, &str, f64, f64, f64, f64, &str)] = &[
     ("gaps_out", "Gaps Out", 25.0, 0.0, 50.0, 2.0, "0"),
     ("border_size", "Border Width", 2.0, 0.0, 20.0, 1.0, "0"),
     ("shadow_range", "Shadow Range", 35.0, 0.0, 50.0, 1.0, "0"),
-    ("shadow_render_power", "Shadow Power", 5.0, 0.0, 10.0, 1.0, "0"),
-    ("shadow_offset_x", "Shadow Offset X", 0.0, -30.0, 30.0, 1.0, "0"),
-    ("shadow_offset_y", "Shadow Offset Y", 10.0, -30.0, 30.0, 1.0, "0"),
+    (
+        "shadow_render_power",
+        "Shadow Power",
+        5.0,
+        0.0,
+        10.0,
+        1.0,
+        "0",
+    ),
+    (
+        "shadow_offset_x",
+        "Shadow Offset X",
+        0.0,
+        -30.0,
+        30.0,
+        1.0,
+        "0",
+    ),
+    (
+        "shadow_offset_y",
+        "Shadow Offset Y",
+        10.0,
+        -30.0,
+        30.0,
+        1.0,
+        "0",
+    ),
 ];
 
 #[cfg(test)]
@@ -1121,13 +2114,31 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), count, "duplicate page ids");
         let expect = [
-            "s_general", "s_timex", "s_keyboard", "s_monitors", "s_startup",
-            "d_engine", "d_position", "d_style", "d_zones", "d_classic",
-            "d_modules", "d_workspaces",
-            "d_palette", "d_animations", "d_shadows", "d_glass", "d_mascots",
-            "d_launcher", "d_notifications",
+            "s_general",
+            "s_timex",
+            "s_keyboard",
+            "s_monitors",
+            "s_startup",
+            "d_engine",
+            "d_position",
+            "d_style",
+            "d_zones",
+            "d_classic",
+            "d_modules",
+            "d_workspaces",
+            "d_palette",
+            "d_animations",
+            "d_shadows",
+            "d_glass",
+            "d_mascots",
+            "d_launcher",
+            "d_notifications",
             "d_widgets",
-            "d_hyprland", "d_input", "d_gpu", "d_idle", "d_guide",
+            "d_hyprland",
+            "d_input",
+            "d_gpu",
+            "d_idle",
+            "d_guide",
         ];
         for id in expect {
             assert!(pages.iter().any(|p| p.id == id), "missing page {id}");
@@ -1151,11 +2162,19 @@ mod tests {
 
     #[test]
     fn popup_positions_cover_all_registry_widgets() {
-        let sections = match &build().into_iter().find(|p| p.id == "d_engine").unwrap().body {
+        let sections = match &build()
+            .into_iter()
+            .find(|p| p.id == "d_engine")
+            .unwrap()
+            .body
+        {
             Body::Controls(s) => s.clone(),
             _ => unreachable!(),
         };
-        let positions = sections.iter().find(|s| s.title == "Popup positions").unwrap();
+        let positions = sections
+            .iter()
+            .find(|s| s.title == "Popup positions")
+            .unwrap();
         assert_eq!(positions.controls.len(), POPUP_WIDGETS.len());
         let first = &positions.controls[0];
         assert_eq!(first.path, vec!["widgets", "network", "position"]);
@@ -1168,7 +2187,12 @@ mod tests {
 
     #[test]
     fn widgets_page_covers_personalization_sections() {
-        let sections = match &build().into_iter().find(|p| p.id == "d_widgets").unwrap().body {
+        let sections = match &build()
+            .into_iter()
+            .find(|p| p.id == "d_widgets")
+            .unwrap()
+            .body
+        {
             Body::Controls(s) => s.clone(),
             _ => unreachable!(),
         };
