@@ -8,7 +8,6 @@
 mod actions;
 mod app;
 mod catalog;
-mod classic;
 mod monitors;
 mod palette;
 mod settings;
@@ -224,9 +223,6 @@ fn handle_browse(app: &mut App, key: KeyEvent) {
         KeyCode::Char('a') => app.add_selected_list(),
         KeyCode::Char('d') => app.delete_selected(),
         KeyCode::Char('w') => app.save_selected_list(),
-        KeyCode::Char('m') => app.classic_action_move_section(),
-        KeyCode::Char('g') => app.classic_action_join(),
-        KeyCode::Char('u') => app.classic_action_ungroup(),
         _ => {}
     }
 }

@@ -12,14 +12,14 @@ can coexist (same atomic write contract).
 
 ## Status
 
-- **25 pages** across the 6 rail groups: Shell (General, Timex, Keyboard,
-  Monitors, Startup), Bar (Engine, Position, Style, Zones, Classic Bar,
-  Modules, Workspaces), Theme (Palette, Animations, Shadows, Glass, Mascots),
-  Behavior (Launcher, Notifications), Widgets (Popups) and System (Hyprland,
-  Input, GPU, Idle, About).
+- **24 pages** across the 6 rail groups, matching `EditorNav.js`: Shell
+  (General, Keyboard, Monitors, Startup), Bar (General, Position, Style, Zones,
+  Modules, Workspaces), Theme (Appearance, Palette, Animations, Shadows, Frame,
+  Glass), Behavior (Launcher, Notifications), Widgets (Popups) and System
+  (Hyprland, Input, GPU, Idle, About).
 - **Search palette** (`/` or `Ctrl+P`): fuzzy match across all pages, options,
   palettes, zones, keybinds, startup commands and quick commands (reload,
-  switch engine, help, quit). Enter jumps straight to the option.
+  help, quit). Enter jumps straight to the option.
 - **Mouse and touch**: click the rail to switch pages, click a row to select,
   double-tap to open/run, click or drag the stepper `[-]`/`[+]` zones, wheel
   to move the selection.
@@ -31,8 +31,7 @@ can coexist (same atomic write contract).
 - **CLI flags**: `--help`, `--version`, `--dry-run`, `--settings`, `--palettes`,
   `--page`, `--search` (see below).
 - **22 tests** (`cargo test`) covering atomic writes, merges that preserve
-  unknown keys, the full catalog, engine switching with `classicbar` seeding,
-  zones, keybinds, ClassicBar grouping and search.
+  unknown keys, the full catalog, zones, keybinds and search.
 - Real PTY smoke tests: navigate, adjust, pick a palette, search and click the
   rail; everything writes/renders correctly.
 
@@ -41,20 +40,19 @@ can coexist (same atomic write contract).
 | Page | What it includes |
 |---|---|
 | Shell · General | uiScale, appScale (runs `scale-menu.sh`), workspaceCount (+`queueReload`), xkb layouts, layout shortcut, wallpaper dir, open wallpaper picker |
-| Shell · Timex | provider (open-meteo/wttr/openweather), unit, city (+refresh), API key (`timex keys set`), key test, all ~21 forecast/clock/calendar/day-panel layout knobs |
 | Shell · Keyboard | full keybind list (add/edit/delete, duplicate validation) and **regenerates `config/user-keybinds.lua` + `hyprctl reload`** like the panel |
 | Shell · Monitors | reads `hyprctl -j monitors`, edits resolution/rate/rotation/VRR/bitdepth/cm/mirror/position, **Apply** (settings.monitors + display-config + `hyprctl eval`) and Reset to auto |
 | Shell · Startup | command list and **regenerates `config/user-startup.lua` + reload** |
-| Bar · Engine | bar/classic selector with `classicbar` seeding from the zones, mirror, classic defaults, 14-popup position matrix |
-| Bar · Position | `bar.position` / `classicbar.position` depending on the engine |
+| Bar · General | `bar.enabled` master switch, dragModules, opacity, roundness, and the 14-popup position matrix |
+| Bar · Position | `bar.position` |
 | Bar · Style | presets (apply a flag bundle), roundness, thickness, edgeGap, opacity, fills, dragModules, font, time/date formats, borders + full **WindowBordersSection** (palette-follow, hex, gradients, angles) |
 | Bar · Zones | zones (add/delete), align, unify, container bg + color + solid, border width/color, module chips with enable/disable and movement (Shift+←/→) within and across zones, Center all, Default |
-| Bar · Classic Bar | style/timeFormat/distinctPills/autohide/roundness/thickness/opacity/width/hide-delay, left/center/right/available sections with reorder (`↑↓`), move section (`m`), group (`g`), ungroup (`u`), mirror and defaults |
 | Bar · Modules | global iconColor + the 18 modules with icon/color/accent/fill and extras (clock format and size, typewriter effect, cursor, date format, workspaces marker and 7 color slots) |
 | Bar · Workspaces | marker (numbers/dots/letters/custom) and custom character |
 | Theme · Palette | full list from `index.json` (x/custom/user) with filter, selection (`bar.palette`), **editing of the 18 slots** of the palette file with backup and reset, create (from the active palette) and delete |
 | Theme · Animations | enabled + speed presets/stepper; writes `user-animations.lua` with `luac -p` + reload via `persist-hypr.sh` |
-| Theme · Shadows/Glass/Mascots | every knob (7 shadows, 2 glass, mascots species/position/count/size) |
+| Theme · Appearance | shape/density/motion scales (`appearance.*`, the MD3 structure tokens) |
+| Theme · Shadows/Glass/Frame | shadows (7), glass (2) and the screen frame (`frame.*`: bands, radius, inset, gap, colour, notches, reserve) |
 | Behavior · Launcher | position, sizes, margins, borders, avoidBar, showIcons, alignment |
 | Behavior · Notifications | width/maxHeight/shadowBlur/shadowOffset/shadow/6 positions and DND |
 | Widgets · Popups | the 16 `Personalization.js` sections with `pretty()` labels and respected types (bool/toggle, floats with decimal step, etc.) |
@@ -134,7 +132,6 @@ Enter/Space   edit, toggle, choose an option, run an action
 a / d / w     add / delete / save lists (keybinds, startup)
 r (in form)   record a shortcut by pressing it
 Shift+←/→     move a module across zones (Zones)
-m / g / u     move section / group / ungroup (Classic Bar)
 ```
 
 Mouse / touch (the terminal must report mouse events, e.g. foot, kitty or
@@ -163,11 +160,10 @@ wheel         move selection up / down
 ```
 src/
   settings.rs   atomic read/write + tests
-  catalog.rs    data-driven definition of the 25 pages and their controls
+  catalog.rs    data-driven definition of the 24 pages and their controls
   app.rs        state, navigation, editing, special pages, side effects
   ui.rs         ratatui rendering (rail, content, chooser, forms, help)
   palette.rs    index.json, palette editing with backup, create/delete
-  classic.rs    ClassicBar defaults/mirrorBar/normalize
   monitors.rs   hyprctl monitors, apply/reset with lua + display-config
   actions.rs    spawn/capture (with dry mode), notify-send
 scripts/check.sh  local fmt + clippy + test gate
@@ -177,7 +173,6 @@ scripts/check.sh  local fmt + clippy + test gate
 
 - **Zones**: no drag & drop; the equivalent is `Shift+←/→` (within and across
   zones) and Enter to enable/disable.
-- **ClassicBar**: group/ungroup with `g`/`u` instead of dragging.
 - **Monitors**: the drag canvas is replaced by Position X/Y fields.
 - **Palette**: colors are edited as hex (`#rrggbb`) instead of a swatch
   picker; "New palette" clones the 8 base colors of the active palette (the

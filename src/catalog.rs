@@ -39,8 +39,6 @@ pub struct Page {
     pub id: &'static str,
     pub group: Group,
     pub label: &'static str,
-    /// Only listed in the rail when settings.barEngine matches.
-    pub engine: Option<&'static str>,
     pub body: Body,
 }
 
@@ -49,7 +47,6 @@ pub enum Body {
     Keybinds,
     Startup,
     Zones,
-    ClassicBar(Vec<Section>),
     Palette,
     HyprEffects,
     Monitors,
@@ -62,7 +59,6 @@ pub enum BodyKind {
     Keybinds,
     Startup,
     Zones,
-    ClassicBar,
     Palette,
     HyprEffects,
     Monitors,
@@ -76,7 +72,6 @@ impl Body {
             Body::Keybinds => BodyKind::Keybinds,
             Body::Startup => BodyKind::Startup,
             Body::Zones => BodyKind::Zones,
-            Body::ClassicBar(_) => BodyKind::ClassicBar,
             Body::Palette => BodyKind::Palette,
             Body::HyprEffects => BodyKind::HyprEffects,
             Body::Monitors => BodyKind::Monitors,
@@ -103,7 +98,6 @@ pub struct Control {
 #[derive(Clone)]
 pub enum Cond {
     Eq(Vec<String>, Value),
-    Engine(&'static str),
 }
 
 #[derive(Clone)]
@@ -140,20 +134,12 @@ pub struct Opt {
 
 #[derive(Clone)]
 pub enum Action {
-    Shell(String),
-    Prompt { prompt: String, prefix: String },
-    SetEngine,
-    MirrorBar,
-    ClassicApplyDefaults,
     ZoneAdd,
     ZonesCenterAll,
     ZonesDefault,
-    ClassicMirror,
-    ClassicDefaults,
     PaletteReset,
     PaletteCreate,
     PaletteDelete,
-    RotateForecastOrder,
     HyprReset,
     HyprRefresh,
     GpuMode,
@@ -267,6 +253,231 @@ fn section(title: &str, controls: Vec<Control>) -> Section {
 
 // ───────────────────────────── catalog ─────────────────────────────
 
+fn bar_general_controls() -> Vec<Section> {
+    vec![
+        section(
+            "Bar",
+            vec![
+                toggle(
+                    "Bar enabled",
+                    &["bar", "enabled"],
+                    "Master switch: off unmaps the bar on every screen",
+                ),
+                toggle(
+                    "Drag modules",
+                    &["bar", "dragModules"],
+                    "Allow dragging modules between zones",
+                ),
+                stepper(
+                    "Opacity",
+                    &["bar", "barOpacity"],
+                    0.05,
+                    0.2,
+                    1.0,
+                    2,
+                    "×",
+                    "Bar background opacity",
+                ),
+                stepper(
+                    "Corner roundness",
+                    &["bar", "roundness"],
+                    0.05,
+                    0.0,
+                    1.0,
+                    2,
+                    "",
+                    "Corner rounding of the bar surfaces",
+                ),
+            ],
+        ),
+        section("Popup positions", {
+            let mut out = Vec::new();
+            for (id, label) in POPUP_WIDGETS {
+                out.push(options(
+                    label,
+                    &["widgets", id, "position"],
+                    &[
+                        ("Auto", "default"),
+                        ("Top Left", "top-left"),
+                        ("Top Center", "top-center"),
+                        ("Top Right", "top-right"),
+                        ("Center Left", "center-left"),
+                        ("Center", "center"),
+                        ("Center Right", "center-right"),
+                        ("Bottom Left", "bottom-left"),
+                        ("Bottom Center", "bottom-center"),
+                        ("Bottom Right", "bottom-right"),
+                    ],
+                    "auto = the widget's own layout; the rest anchor with a 20px scaled margin",
+                ));
+            }
+            out
+        }),
+    ]
+}
+
+fn appearance_controls() -> Vec<Section> {
+    vec![section(
+        "Structure tokens",
+        vec![
+            stepper(
+                "Shape scale",
+                &["appearance", "shapeScale"],
+                0.1,
+                0.5,
+                2.0,
+                2,
+                "×",
+                "Radius/shape scale for every surface",
+            ),
+            stepper(
+                "Density scale",
+                &["appearance", "densityScale"],
+                0.1,
+                0.5,
+                2.0,
+                2,
+                "×",
+                "Spacing/padding scale",
+            ),
+            stepper(
+                "Motion scale",
+                &["appearance", "motionScale"],
+                0.1,
+                0.5,
+                2.0,
+                2,
+                "×",
+                "Animation duration scale",
+            ),
+        ],
+    )]
+}
+
+fn frame_controls() -> Vec<Section> {
+    vec![section(
+        "Frame",
+        vec![
+            toggle("Enabled", &["frame", "enabled"], "Draw the screen frame"),
+            toggle(
+                "Border line",
+                &["frame", "line"],
+                "Draw the inner line that hugs windows",
+            ),
+            stepper(
+                "Band width (top/bottom)",
+                &["frame", "thickness"],
+                1.0,
+                0.0,
+                64.0,
+                0,
+                "px",
+                "Band width on top/bottom",
+            ),
+            stepper(
+                "Band width (left/right)",
+                &["frame", "sideThickness"],
+                1.0,
+                0.0,
+                64.0,
+                0,
+                "px",
+                "Band width on left/right",
+            ),
+            stepper(
+                "Line width",
+                &["frame", "lineWidth"],
+                1.0,
+                0.0,
+                16.0,
+                0,
+                "px",
+                "Inner line stroke width",
+            ),
+            stepper(
+                "Corner radius",
+                &["frame", "radius"],
+                1.0,
+                0.0,
+                128.0,
+                0,
+                "px",
+                "Screen corner radius",
+            ),
+            stepper(
+                "Inset",
+                &["frame", "inset"],
+                1.0,
+                0.0,
+                128.0,
+                0,
+                "px",
+                "Outer edge offset from the screen edge",
+            ),
+            stepper(
+                "Gap",
+                &["frame", "gap"],
+                1.0,
+                0.0,
+                64.0,
+                0,
+                "px",
+                "Gap between the frame and an obstacle",
+            ),
+            stepper(
+                "Line opacity",
+                &["frame", "alpha"],
+                0.05,
+                0.0,
+                1.0,
+                2,
+                "",
+                "Border alpha",
+            ),
+            options(
+                "Color",
+                &["frame", "color"],
+                &[
+                    ("Overlay 0", "overlay0"),
+                    ("Overlay 1", "overlay1"),
+                    ("Overlay 2", "overlay2"),
+                    ("Mauve", "mauve"),
+                    ("Blue", "blue"),
+                    ("Green", "green"),
+                    ("Red", "red"),
+                    ("Yellow", "yellow"),
+                ],
+                "Border colour (palette role or #rrggbb)",
+            ),
+            stepper(
+                "Notch radius",
+                &["frame", "notchRadius"],
+                1.0,
+                0.0,
+                64.0,
+                0,
+                "px",
+                "Corner radius of the notches",
+            ),
+            toggle(
+                "Reserve space",
+                &["frame", "reserve"],
+                "Reserve space so windows never cross the frame",
+            ),
+            stepper(
+                "Reserve extra",
+                &["frame", "reserveExtra"],
+                1.0,
+                0.0,
+                64.0,
+                0,
+                "px",
+                "Extra reserved px",
+            ),
+        ],
+    )]
+}
+
 pub fn build() -> Vec<Page> {
     vec![
         // ═══════════════ SHELL ═══════════════
@@ -274,7 +485,6 @@ pub fn build() -> Vec<Page> {
             id: "s_general",
             group: Group::Shell,
             label: "General",
-            engine: None,
             body: Body::Controls(vec![
                 section(
                     "Display",
@@ -357,177 +567,71 @@ pub fn build() -> Vec<Page> {
             ]),
         },
         Page {
-            id: "s_timex",
-            group: Group::Shell,
-            label: "Timex",
-            engine: None,
-            body: Body::Controls(timex_controls()),
-        },
-        Page {
             id: "s_keyboard",
             group: Group::Shell,
             label: "Keyboard",
-            engine: None,
             body: Body::Keybinds,
         },
         Page {
             id: "s_monitors",
             group: Group::Shell,
             label: "Monitors",
-            engine: None,
             body: Body::Monitors,
         },
         Page {
             id: "s_startup",
             group: Group::Shell,
             label: "Startup",
-            engine: None,
             body: Body::Startup,
         },
         // ═══════════════ BAR ═══════════════
         Page {
-            id: "d_engine",
+            id: "d_general",
             group: Group::Bar,
-            label: "Engine",
-            engine: None,
-            body: Body::Controls(vec![
-                section(
-                    "Engine",
-                    vec![
-                        control(
-                            "Engine",
-                            Kind::StateOptions {
-                                state_key: "engine".into(),
-                                options: vec![
-                                    Opt {
-                                        label: "Bar (zones · hot switch)".into(),
-                                        value: "bar".into(),
-                                    },
-                                    Opt {
-                                        label: "ClassicBar (autohide · pills)".into(),
-                                        value: "classic".into(),
-                                    },
-                                ],
-                                action: Action::SetEngine,
-                            },
-                            Vec::new(),
-                            "Switch between the zones engine and ClassicBar (hot switch)",
-                        ),
-                        visible(
-                            action(
-                                "Mirror bar layout",
-                                Action::MirrorBar,
-                                "Import the enabled bar modules into classicbar",
-                            ),
-                            Cond::Engine("classic"),
-                        ),
-                        visible(
-                            action(
-                                "Classic defaults",
-                                Action::ClassicApplyDefaults,
-                                "Reset classicbar to its defaults",
-                            ),
-                            Cond::Engine("classic"),
-                        ),
-                    ],
-                ),
-                section("Popup positions", {
-                    let mut out = Vec::new();
-                    for (id, label) in POPUP_WIDGETS {
-                        out.push(options(
-                            label,
-                            &["widgets", id, "position"],
-                            &[
-                                ("Auto", "default"),
-                                ("Top Left", "top-left"),
-                                ("Top Center", "top-center"),
-                                ("Top Right", "top-right"),
-                                ("Center Left", "center-left"),
-                                ("Center", "center"),
-                                ("Center Right", "center-right"),
-                                ("Bottom Left", "bottom-left"),
-                                ("Bottom Center", "bottom-center"),
-                                ("Bottom Right", "bottom-right"),
-                            ],
-                            "auto = the widget's own layout; the rest anchor with a 20px scaled margin",
-                        ));
-                    }
-                    out
-                }),
-            ]),
+            label: "General",
+            body: Body::Controls(bar_general_controls()),
         },
         Page {
             id: "d_position",
             group: Group::Bar,
             label: "Position",
-            engine: None,
             body: Body::Controls(vec![section(
                 "Bar position",
-                vec![
-                    visible(
-                        options(
-                            "Position",
-                            &["bar", "position"],
-                            &[
-                                ("Top", "top"),
-                                ("Bottom", "bottom"),
-                                ("Left", "left"),
-                                ("Right", "right"),
-                            ],
-                            "Zones bar position",
-                        ),
-                        Cond::Engine("bar"),
-                    ),
-                    visible(
-                        options(
-                            "Position",
-                            &["classicbar", "position"],
-                            &[
-                                ("Top", "top"),
-                                ("Bottom", "bottom"),
-                                ("Left", "left"),
-                                ("Right", "right"),
-                            ],
-                            "ClassicBar position",
-                        ),
-                        Cond::Engine("classic"),
-                    ),
-                ],
+                vec![options(
+                    "Position",
+                    &["bar", "position"],
+                    &[
+                        ("Top", "top"),
+                        ("Bottom", "bottom"),
+                        ("Left", "left"),
+                        ("Right", "right"),
+                    ],
+                    "Bar position",
+                )],
             )]),
         },
         Page {
             id: "d_style",
             group: Group::Bar,
             label: "Style",
-            engine: Some("bar"),
             body: Body::Controls(bar_style_controls()),
         },
         Page {
             id: "d_zones",
             group: Group::Bar,
             label: "Zones",
-            engine: Some("bar"),
             body: Body::Zones,
-        },
-        Page {
-            id: "d_classic",
-            group: Group::Bar,
-            label: "Classic Bar",
-            engine: Some("classic"),
-            body: Body::ClassicBar(classic_controls()),
         },
         Page {
             id: "d_modules",
             group: Group::Bar,
             label: "Modules",
-            engine: None,
             body: Body::Controls(modules_controls()),
         },
         Page {
             id: "d_workspaces",
             group: Group::Bar,
             label: "Workspaces",
-            engine: None,
             body: Body::Controls(vec![section(
                 "Workspaces marker",
                 vec![
@@ -561,17 +665,21 @@ pub fn build() -> Vec<Page> {
         },
         // ═══════════════ THEME ═══════════════
         Page {
+            id: "d_appearance",
+            group: Group::Theme,
+            label: "Appearance",
+            body: Body::Controls(appearance_controls()),
+        },
+        Page {
             id: "d_palette",
             group: Group::Theme,
             label: "Palette",
-            engine: None,
             body: Body::Palette,
         },
         Page {
             id: "d_animations",
             group: Group::Theme,
             label: "Animations",
-            engine: None,
             body: Body::Controls(vec![
                 section(
                     "General",
@@ -613,7 +721,6 @@ pub fn build() -> Vec<Page> {
             id: "d_shadows",
             group: Group::Theme,
             label: "Shadows",
-            engine: None,
             body: Body::Controls(vec![
                 section(
                     "Shape",
@@ -693,10 +800,15 @@ pub fn build() -> Vec<Page> {
             ]),
         },
         Page {
+            id: "d_frame",
+            group: Group::Theme,
+            label: "Frame",
+            body: Body::Controls(frame_controls()),
+        },
+        Page {
             id: "d_glass",
             group: Group::Theme,
             label: "Glass",
-            engine: None,
             body: Body::Controls(vec![section(
                 "Glassmorphism",
                 vec![
@@ -718,91 +830,17 @@ pub fn build() -> Vec<Page> {
                 ],
             )]),
         },
-        Page {
-            id: "d_mascots",
-            group: Group::Theme,
-            label: "Mascots",
-            engine: None,
-            body: Body::Controls(vec![
-                section(
-                    "General",
-                    vec![toggle(
-                        "Enabled",
-                        &["mascots", "enabled"],
-                        "Desktop mascots",
-                    )],
-                ),
-                section(
-                    "Species",
-                    vec![options(
-                        "Species",
-                        &["mascots", "species"],
-                        &[
-                            ("Flame", "flame"),
-                            ("Cats", "cat"),
-                            ("Dogs", "dog"),
-                            ("Eyes", "eyes"),
-                            ("Mixed", "mixed"),
-                            ("Dots", "dots"),
-                        ],
-                        "Mascot species",
-                    )],
-                ),
-                section(
-                    "Position",
-                    vec![options(
-                        "Position",
-                        &["mascots", "position"],
-                        &[
-                            ("Top Left", "top-left"),
-                            ("Top Center", "top-center"),
-                            ("Top Right", "top-right"),
-                            ("Center Left", "center-left"),
-                            ("Center", "center"),
-                            ("Center Right", "center-right"),
-                            ("Bottom Left", "bottom-left"),
-                            ("Bottom Center", "bottom-center"),
-                            ("Bottom Right", "bottom-right"),
-                        ],
-                        "Mascot anchor",
-                    )],
-                ),
-                section(
-                    "How many",
-                    vec![
-                        options(
-                            "Count",
-                            &["mascots", "count"],
-                            &[("One", "1"), ("Two", "2"), ("Three", "3")],
-                            "1 – 3 mascotas",
-                        ),
-                        stepper(
-                            "Size",
-                            &["mascots", "size"],
-                            0.1,
-                            0.6,
-                            1.6,
-                            1,
-                            "x",
-                            "0.6 – 1.6",
-                        ),
-                    ],
-                ),
-            ]),
-        },
         // ═══════════════ BEHAVIOR ═══════════════
         Page {
             id: "d_launcher",
             group: Group::Behavior,
             label: "Launcher",
-            engine: None,
             body: Body::Controls(launcher_controls()),
         },
         Page {
             id: "d_notifications",
             group: Group::Behavior,
             label: "Notifications",
-            engine: None,
             body: Body::Controls(notification_controls()),
         },
         // ═══════════════ WIDGETS ═══════════════
@@ -810,7 +848,6 @@ pub fn build() -> Vec<Page> {
             id: "d_widgets",
             group: Group::Widgets,
             label: "Popups",
-            engine: None,
             body: Body::Controls(popup_controls()),
         },
         // ═══════════════ SYSTEM ═══════════════
@@ -818,14 +855,12 @@ pub fn build() -> Vec<Page> {
             id: "d_hyprland",
             group: Group::System,
             label: "Hyprland",
-            engine: None,
             body: Body::HyprEffects,
         },
         Page {
             id: "d_input",
             group: Group::System,
             label: "Input",
-            engine: None,
             body: Body::Controls(vec![
                 section(
                     "Mouse",
@@ -870,7 +905,6 @@ pub fn build() -> Vec<Page> {
             id: "d_gpu",
             group: Group::System,
             label: "GPU",
-            engine: None,
             body: Body::Controls(vec![
                 section(
                     "Optimus mode",
@@ -915,7 +949,6 @@ pub fn build() -> Vec<Page> {
             id: "d_idle",
             group: Group::System,
             label: "Idle",
-            engine: None,
             body: Body::Controls(vec![
                 section(
                     "Idle mode",
@@ -955,7 +988,6 @@ pub fn build() -> Vec<Page> {
             id: "d_guide",
             group: Group::System,
             label: "About",
-            engine: None,
             body: Body::Guide,
         },
     ]
@@ -1257,68 +1289,6 @@ fn popup_controls() -> Vec<Section> {
 
 // ───────────────────────────── timex ─────────────────────────────
 
-fn timex_controls() -> Vec<Section> {
-    let timex = |key: &str| p(&["timex", key]);
-    let t = |label: &str, key: &str| control(label, Kind::Toggle, timex(key), "");
-    vec![
-        section("Provider", vec![
-            control("Provider", Kind::Options(vec![
-                Opt { label: "Open-Meteo (free, city or lat,lon)".into(), value: "open-meteo".into() },
-                Opt { label: "wttr.in (free, city)".into(), value: "wttr".into() },
-                Opt { label: "OpenWeatherMap (needs key)".into(), value: "openweather".into() },
-            ]), timex("provider"), "Weather data provider"),
-            control("Temperature unit", Kind::Options(vec![
-                Opt { label: "Celsius".into(), value: "metric".into() },
-                Opt { label: "Fahrenheit".into(), value: "imperial".into() },
-            ]), timex("unit"), ""),
-        ]),
-        section("City", vec![
-            control("City", Kind::Text { placeholder: "Madrid o 40.4,-3.7".into(), max: 128 }, timex("city"), "Enter guarda y refresca; Open-Meteo acepta lat,lon"),
-            action("OpenWeather API key", Action::Prompt {
-                prompt: "API key".into(),
-                prefix: "TIMEX=\"${TIMEX_CLI:-$HOME/.local/bin/timex}\"; [ -x \"$TIMEX\" ] || TIMEX=timex; \"$TIMEX\" keys set OPENWEATHER_KEY".into(),
-            }, "Store the key in timex state (chmod 600)"),
-            action("Test key", Action::Shell("TIMEX=\"${TIMEX_CLI:-$HOME/.local/bin/timex}\"; [ -x \"$TIMEX\" ] || TIMEX=timex; \"$TIMEX\" test".into()), "Test the API key"),
-            action("Refresh data", Action::Shell("TIMEX=\"${TIMEX_CLI:-$HOME/.local/bin/timex}\"; [ -x \"$TIMEX\" ] || TIMEX=timex; \"$TIMEX\" --invalidate >/dev/null 2>&1; \"$TIMEX\" --getdata >/dev/null 2>&1".into()), "Invalidate and fetch data again"),
-            info("Engine status", "timex.status"),
-        ]),
-        section("Timex layout", vec![
-            t("Hourly row", "forecastEnabled"),
-            control("Forecast position", Kind::Options(vec![
-                Opt { label: "Below".into(), value: "below".into() },
-                Opt { label: "Above".into(), value: "above".into() },
-            ]), timex("forecastPosition"), ""),
-            t("Show time", "forecastShowTime"),
-            t("Show icon", "forecastShowIcon"),
-            t("Show temp", "forecastShowTemp"),
-            action("Rotate order", Action::RotateForecastOrder, "Rotate the time · icon · temp order"),
-            t("Clock seconds", "clockShowSeconds"),
-            t("Clock date", "clockShowDate"),
-            stepper("Forecast size", &["timex", "forecastSize"], 0.1, 0.8, 1.4, 1, "x", "0.8 – 1.4"),
-            stepper("Gap", &["timex", "forecastGap"], 2.0, 2.0, 40.0, 0, "px", "2 – 40"),
-            stepper("Hours shown", &["timex", "forecastHours"], 1.0, 3.0, 8.0, 0, "", "3 – 8"),
-            stepper("Clock scale", &["timex", "clockScale"], 0.05, 0.85, 1.25, 2, "x", "0.85 – 1.25"),
-        ]),
-        section("Calendar & day panel", vec![
-            t("Calendar", "calendarEnabled"),
-            control("Week starts", Kind::Options(vec![
-                Opt { label: "Monday".into(), value: "monday".into() },
-                Opt { label: "Sunday".into(), value: "sunday".into() },
-            ]), timex("calendarWeekStart"), ""),
-            stepper("Calendar size", &["timex", "calendarSize"], 0.05, 0.8, 1.2, 2, "x", "0.8 – 1.2"),
-            t("Day panel", "panelEnabled"),
-            t("Wind", "panelShowWind"),
-            t("Humidity", "panelShowHumidity"),
-            t("Rain", "panelShowPop"),
-            t("Feels like", "panelShowFeels"),
-            stepper("Day panel size", &["timex", "panelSize"], 0.05, 0.8, 1.2, 2, "x", "0.8 – 1.2"),
-        ]),
-        section("Order", vec![
-            info("Order value", "timex.order"),
-        ]),
-    ]
-}
-
 // ───────────────────────────── bar style / borders ─────────────────────────────
 
 pub fn border_sections() -> Vec<Section> {
@@ -1532,110 +1502,9 @@ fn bar_style_controls() -> Vec<Section> {
     ]
 }
 
-fn classic_controls() -> Vec<Section> {
-    vec![
-        section(
-            "Style & size",
-            vec![
-                options(
-                    "Style",
-                    &["classicbar", "style"],
-                    &[("Modular", "modular"), ("Solid", "solid"), ("Fill", "fill")],
-                    "",
-                ),
-                options(
-                    "Time format",
-                    &["classicbar", "timeFormat"],
-                    &[
-                        ("24h :ss", "HH:mm:ss"),
-                        ("24h :mm", "HH:mm"),
-                        ("12h", "h:mm a"),
-                    ],
-                    "",
-                ),
-                toggle(
-                    "Distinct pills",
-                    &["classicbar", "distinctPills"],
-                    "Separate pill per module",
-                ),
-                toggle(
-                    "Autohide",
-                    &["classicbar", "autohide"],
-                    "Hide the bar until the cursor approaches",
-                ),
-                stepper(
-                    "Roundness",
-                    &["classicbar", "roundness"],
-                    0.1,
-                    0.0,
-                    1.0,
-                    1,
-                    "",
-                    "0 – 1",
-                ),
-                stepper(
-                    "Thickness",
-                    &["classicbar", "thickness"],
-                    4.0,
-                    24.0,
-                    120.0,
-                    0,
-                    "px",
-                    "24 – 120",
-                ),
-                stepper(
-                    "Bar opacity",
-                    &["classicbar", "opacity"],
-                    5.0,
-                    20.0,
-                    100.0,
-                    0,
-                    "%",
-                    "20 – 100",
-                ),
-                stepper(
-                    "Width",
-                    &["classicbar", "widthPercent"],
-                    5.0,
-                    40.0,
-                    100.0,
-                    0,
-                    "%",
-                    "40 – 100",
-                ),
-                stepper(
-                    "Hide delay",
-                    &["classicbar", "autohideTimeout"],
-                    100.0,
-                    200.0,
-                    5000.0,
-                    0,
-                    "ms",
-                    "200 – 5000",
-                ),
-            ],
-        ),
-        section(
-            "Actions",
-            vec![
-                action(
-                    "Mirror bar layout",
-                    Action::ClassicMirror,
-                    "Import enabled modules from the zones bar",
-                ),
-                action(
-                    "Classic defaults",
-                    Action::ClassicDefaults,
-                    "Reset classicbar (keeps position)",
-                ),
-            ],
-        ),
-    ]
-}
-
 // ───────────────────────────── modules ─────────────────────────────
 
-const MODULES: &[(&str, &str, bool)] = &[
+pub(crate) const MODULES: &[(&str, &str, bool)] = &[
     ("help", "Help", true),
     ("search", "Search", true),
     ("settings", "Settings", true),
@@ -2115,22 +1984,21 @@ mod tests {
         assert_eq!(ids.len(), count, "duplicate page ids");
         let expect = [
             "s_general",
-            "s_timex",
             "s_keyboard",
             "s_monitors",
             "s_startup",
-            "d_engine",
+            "d_general",
             "d_position",
             "d_style",
             "d_zones",
-            "d_classic",
             "d_modules",
             "d_workspaces",
+            "d_appearance",
             "d_palette",
             "d_animations",
             "d_shadows",
+            "d_frame",
             "d_glass",
-            "d_mascots",
             "d_launcher",
             "d_notifications",
             "d_widgets",
@@ -2147,24 +2015,10 @@ mod tests {
     }
 
     #[test]
-    fn engine_gated_pages_match_editor_nav() {
-        let pages = build();
-        let style = pages.iter().find(|p| p.id == "d_style").unwrap();
-        assert_eq!(style.engine, Some("bar"));
-        let zones = pages.iter().find(|p| p.id == "d_zones").unwrap();
-        assert_eq!(zones.engine, Some("bar"));
-        let classic = pages.iter().find(|p| p.id == "d_classic").unwrap();
-        assert_eq!(classic.engine, Some("classic"));
-        for id in ["d_engine", "d_position", "d_modules", "d_workspaces"] {
-            assert_eq!(pages.iter().find(|p| p.id == id).unwrap().engine, None);
-        }
-    }
-
-    #[test]
     fn popup_positions_cover_all_registry_widgets() {
         let sections = match &build()
             .into_iter()
-            .find(|p| p.id == "d_engine")
+            .find(|p| p.id == "d_general")
             .unwrap()
             .body
         {
