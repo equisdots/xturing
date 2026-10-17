@@ -2,7 +2,6 @@
 
 use crate::actions;
 use crate::catalog::{self, Action, Body, BodyKind, Cond, Control, Group, Kind, Opt, Page};
-use crate::classic;
 use crate::monitors::{self, Monitor};
 use crate::palette::{self, PaletteEntry, PaletteFile};
 use crate::settings::Settings;
@@ -20,7 +19,6 @@ pub enum Row {
     ZoneHeader(usize),
     ZoneField { zone: usize, field: usize },
     ZoneModule { zone: usize, idx: usize },
-    ClassicItem { sec: usize, idx: usize },
     PaletteItem(usize),
     PaletteSlot(usize),
     MonitorField { mon: usize, field: usize },
@@ -140,7 +138,6 @@ pub enum SearchCommand {
     Reload,
     Quit,
     Help,
-    ToggleEngine,
 }
 
 /// Clickable screen region registered every frame by the renderer.
@@ -213,7 +210,6 @@ pub const MONITOR_FIELDS: &[(&str, &str)] = &[
 pub struct App {
     pub settings: Settings,
     pub pages: Vec<Page>,
-    pub engine: String,
     pub page: usize,
     pub sel: usize,
     pub sel_memory: Vec<usize>,
@@ -247,9 +243,6 @@ pub struct App {
 impl App {
     pub fn with_settings(settings: Settings) -> Result<Self> {
         let settings = settings;
-        let engine = settings
-            .get_str(&["barEngine"])
-            .unwrap_or_else(|| "bar".into());
         let keybinds = settings
             .get(&["keybinds"])
             .and_then(Value::as_array)
@@ -265,7 +258,6 @@ impl App {
         let mut app = Self {
             settings,
             pages,
-            engine,
             page: 0,
             sel: 0,
             sel_memory: vec![0; page_count],
@@ -302,12 +294,7 @@ impl App {
     // ───────────────────────── pages ─────────────────────────
 
     pub fn visible_page_indices(&self) -> Vec<usize> {
-        self.pages
-            .iter()
-            .enumerate()
-            .filter(|(_, p)| p.engine.map(|e| e == self.engine).unwrap_or(true))
-            .map(|(i, _)| i)
-            .collect()
+        self.pages.iter().enumerate().map(|(i, _)| i).collect()
     }
 
     pub fn current_page(&self) -> &Page {
@@ -399,7 +386,6 @@ impl App {
 
     fn cond_ok(&self, cond: &Cond) -> bool {
         match cond {
-            Cond::Engine(e) => self.engine == *e,
             Cond::Eq(path, want) => {
                 let got = self
                     .settings
@@ -418,7 +404,6 @@ impl App {
         let mut rows: Vec<Row> = Vec::new();
         let controls = match kind {
             BodyKind::Controls => self.control_sections_flat(),
-            BodyKind::ClassicBar => self.control_sections_flat(),
             BodyKind::HyprEffects => hypr_controls(),
             BodyKind::Zones => zones_actions(),
             BodyKind::Monitors => monitors_actions(),
@@ -474,29 +459,6 @@ impl App {
                         .unwrap_or_default();
                     for (i, _) in modules.iter().enumerate() {
                         rows.push(Row::ZoneModule { zone: z, idx: i });
-                    }
-                }
-            }
-            BodyKind::ClassicBar => {
-                for (title, indices) in self.control_sections() {
-                    let visible: Vec<usize> = indices
-                        .into_iter()
-                        .filter(|&i| self.control_visible(&self.controls[i]))
-                        .collect();
-                    if visible.is_empty() {
-                        continue;
-                    }
-                    rows.push(Row::Section(title));
-                    for i in visible {
-                        rows.push(Row::Control(i));
-                    }
-                }
-                let labels = ["Left", "Center", "Right", "Available"];
-                for (sec, label) in labels.iter().enumerate() {
-                    rows.push(Row::Section(format!("Modules — {}", label)));
-                    let items = self.classic_items(sec);
-                    for (i, _) in items.iter().enumerate() {
-                        rows.push(Row::ClassicItem { sec, idx: i });
                     }
                 }
             }
@@ -576,7 +538,7 @@ impl App {
     /// Section titles + indices into `self.controls` for the current page.
     fn control_sections(&self) -> Vec<(String, Vec<usize>)> {
         match &self.current_page().body {
-            Body::Controls(sections) | Body::ClassicBar(sections) => {
+            Body::Controls(sections) => {
                 let mut out = Vec::new();
                 let mut i = 0usize;
                 for s in sections {
@@ -610,7 +572,7 @@ impl App {
 
     fn control_sections_flat(&self) -> Vec<Control> {
         match &self.current_page().body {
-            Body::Controls(sections) | Body::ClassicBar(sections) => flatten(sections),
+            Body::Controls(sections) => flatten(sections),
             _ => Vec::new(),
         }
     }
@@ -682,40 +644,6 @@ impl App {
     fn set_zones(&mut self, zones: Vec<Value>) {
         let _ = self.settings.set(&["bar", "zones"], Value::Array(zones));
     }
-
-    fn classic_items(&self, sec: usize) -> Vec<Value> {
-        self.settings
-            .get(&["classicbar", "modules", classic::SECTIONS[sec]])
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default()
-    }
-
-    fn set_classic_items(&mut self, sec: usize, items: Vec<Value>) {
-        let mut modules = self
-            .settings
-            .get(&["classicbar", "modules"])
-            .cloned()
-            .unwrap_or_else(|| json!({}));
-        if !modules.is_object() {
-            modules = json!({});
-        }
-        classic::normalize_modules(&mut modules);
-        modules
-            .as_object_mut()
-            .unwrap()
-            .insert(classic::SECTIONS[sec].to_string(), Value::Array(items));
-        classic::normalize_modules(&mut modules);
-        let _ = self.settings.set(&["classicbar", "modules"], modules);
-    }
-
-    fn classic_modules_root(&self) -> Value {
-        self.settings
-            .get(&["classicbar", "modules"])
-            .cloned()
-            .unwrap_or_else(|| json!({}))
-    }
-
     pub fn info_value(&self, key: &str) -> String {
         if let Some(v) = self.infos.get(key) {
             return v.clone();
@@ -943,7 +871,6 @@ impl App {
         match self.selected_row() {
             Some(Row::Control(i)) => self.adjust_control(i, delta),
             Some(Row::ZoneField { zone, field }) => self.zone_field(zone, field, delta),
-            Some(Row::ClassicItem { sec, idx }) => self.classic_move(sec, idx, delta),
             Some(Row::MonitorField { mon, field }) => self.monitor_adjust(mon, field, delta),
             Some(Row::PaletteSlot(_)) | Some(Row::Keybind(_)) | Some(Row::Startup(_)) => {}
             Some(Row::ZoneModule { .. }) | Some(Row::ZoneHeader(_)) => {}
@@ -980,9 +907,6 @@ impl App {
                 }
             }
             Some(Row::ZoneModule { zone, idx }) => self.zone_toggle_module(zone, idx),
-            Some(Row::ClassicItem { sec, idx }) => {
-                let _ = (sec, idx);
-            }
             Some(Row::PaletteItem(i)) => self.palette_select(i),
             Some(Row::PaletteSlot(slot)) => {
                 if let Some(p) = &self.palette {
@@ -1079,25 +1003,6 @@ impl App {
             self.zone_move_module(zone, idx, delta);
         }
     }
-
-    pub fn classic_action_join(&mut self) {
-        if let Some(Row::ClassicItem { sec, idx }) = self.selected_row() {
-            self.classic_join(sec, idx);
-        }
-    }
-
-    pub fn classic_action_ungroup(&mut self) {
-        if let Some(Row::ClassicItem { sec, idx }) = self.selected_row() {
-            self.classic_ungroup(sec, idx);
-        }
-    }
-
-    pub fn classic_action_move_section(&mut self) {
-        if let Some(Row::ClassicItem { sec, idx }) = self.selected_row() {
-            self.classic_move_section(sec, idx);
-        }
-    }
-
     pub fn selected_is_zone_module(&self) -> bool {
         matches!(self.selected_row(), Some(Row::ZoneModule { .. }))
     }
@@ -1132,10 +1037,6 @@ impl App {
             self.set_status(format!("reload error: {e}"));
             return;
         }
-        self.engine = self
-            .settings
-            .get_str(&["barEngine"])
-            .unwrap_or_else(|| "bar".into());
         self.keybinds = self
             .settings
             .get(&["keybinds"])
@@ -1316,22 +1217,6 @@ impl App {
 
     pub fn run_action(&mut self, act: Action, arg: Option<String>) {
         match act {
-            Action::Shell(cmd) => actions::spawn(&cmd),
-            Action::Prompt { prompt, prefix } => {
-                self.mode = Mode::Edit {
-                    target: EditTarget::Prompt { prefix, prompt },
-                    buf: String::new(),
-                    cursor: 0,
-                };
-            }
-            Action::SetEngine => {
-                let value = arg
-                    .or_else(|| self.vstate.get("engine").cloned())
-                    .unwrap_or_else(|| "bar".into());
-                self.set_engine(&value);
-            }
-            Action::MirrorBar => self.mirror_bar(),
-            Action::ClassicApplyDefaults => self.classic_defaults(),
             Action::ZoneAdd => self.zone_add(),
             Action::ZonesCenterAll => self.zones_center_all(),
             Action::ZonesDefault => {
@@ -1340,8 +1225,6 @@ impl App {
                     msg: "Reset bar to factory defaults?".into(),
                 };
             }
-            Action::ClassicMirror => self.mirror_bar(),
-            Action::ClassicDefaults => self.classic_defaults(),
             Action::PaletteReset => {
                 self.mode = Mode::Confirm {
                     action: Action::PaletteReset,
@@ -1372,19 +1255,6 @@ impl App {
                         msg: format!("Delete palette '{}'?", slug),
                     };
                 }
-            }
-            Action::RotateForecastOrder => {
-                let cur = self
-                    .settings
-                    .get_str(&["timex", "forecastOrder"])
-                    .unwrap_or_else(|| "time,icon,temp".into());
-                let parts: Vec<&str> = cur.split(',').collect();
-                let rotated = if parts.len() == 3 {
-                    format!("{},{},{}", parts[1], parts[2], parts[0])
-                } else {
-                    "time,icon,temp".into()
-                };
-                self.write_path(&p("timex.forecastOrder"), Value::String(rotated));
             }
             Action::HyprReset => {
                 for (key, _, default, _, _, _, _) in catalog::HYPR_SLIDERS {
@@ -1708,78 +1578,6 @@ impl App {
     }
 
     // ───────────────────────── engine / bar / classic ─────────────────────────
-
-    fn set_engine(&mut self, engine: &str) {
-        if engine == self.engine {
-            return;
-        }
-        if engine == "classic" {
-            let has = self
-                .settings
-                .get(&["classicbar"])
-                .map(Value::is_object)
-                .unwrap_or(false);
-            if !has {
-                let bar_position = self
-                    .settings
-                    .get_str(&["bar", "position"])
-                    .unwrap_or_else(|| "top".into());
-                let mut cfg = classic::defaults();
-                cfg.insert("position".into(), Value::String(bar_position));
-                let bar = self
-                    .settings
-                    .get(&["bar"])
-                    .and_then(Value::as_object)
-                    .cloned()
-                    .unwrap_or_default();
-                cfg.insert("modules".into(), classic::bar_to_classic(&bar));
-                let _ = self.settings.set(&["classicbar"], Value::Object(cfg));
-            }
-        }
-        let _ = self
-            .settings
-            .set(&["barEngine"], Value::String(engine.into()));
-        self.engine = engine.to_string();
-        self.vstate.insert("engine".into(), engine.to_string());
-        // If current page is engine-gated and no longer visible, fall back.
-        if let Some(gate) = self.current_page().engine
-            && gate != self.engine
-        {
-            self.page = self
-                .pages
-                .iter()
-                .position(|p| p.id == "d_engine")
-                .unwrap_or(0);
-        }
-        self.rebuild_rows();
-        self.set_status(format!("Engine: {}", engine));
-    }
-
-    fn mirror_bar(&mut self) {
-        let bar = self
-            .settings
-            .get(&["bar"])
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
-        let modules = classic::bar_to_classic(&bar);
-        let _ = self.settings.set(&["classicbar", "modules"], modules);
-        self.set_status("Mirrored bar layout into classicbar");
-        self.refresh_page_state();
-    }
-
-    fn classic_defaults(&mut self) {
-        let position = self
-            .settings
-            .get_str(&["classicbar", "position"])
-            .unwrap_or_else(|| "top".into());
-        let mut cfg = classic::defaults();
-        cfg.insert("position".into(), Value::String(position));
-        let _ = self.settings.set(&["classicbar"], Value::Object(cfg));
-        self.set_status("ClassicBar reset to defaults");
-        self.refresh_page_state();
-    }
-
     // ───────────────────────── zones ─────────────────────────
 
     fn zone_add(&mut self) {
@@ -1816,9 +1614,10 @@ impl App {
                 }
             }
         }
-        let order: Vec<String> = classic::CATALOG_IDS
+        let order: Vec<String> = crate::catalog::MODULES
             .iter()
-            .filter(|id| enabled_ids.iter().any(|e| e == *id))
+            .map(|(id, _, _)| *id)
+            .filter(|id| enabled_ids.iter().any(|e| e == id))
             .map(|s| s.to_string())
             .collect();
         let mut new_zones: Vec<Value> = zones
@@ -2073,100 +1872,6 @@ impl App {
         self.set_zones(zones);
         self.rebuild_rows();
     }
-
-    fn classic_move(&mut self, sec: usize, idx: usize, delta: i32) {
-        let items = self.classic_items(sec);
-        if items.is_empty() {
-            return;
-        }
-        let new_idx = idx as i32 + delta;
-        if new_idx < 0 || new_idx as usize >= items.len() {
-            return;
-        }
-        let mut items = items;
-        items.swap(idx, new_idx as usize);
-        self.set_classic_items(sec, items);
-        self.rebuild_rows();
-    }
-
-    /// 'm': move item to the next classic section (left -> center -> right -> available).
-    fn classic_move_section(&mut self, sec: usize, idx: usize) {
-        let items = self.classic_items(sec);
-        if idx >= items.len() {
-            return;
-        }
-        let target = (sec + 1) % classic::SECTIONS.len();
-        let mut src = items.clone();
-        let item = src.remove(idx);
-        let mut dst = self.classic_items(target);
-        dst.push(item);
-        // write both (normalize once at the end)
-        self.set_classic_items_raw(target, dst);
-        self.set_classic_items_raw(sec, src);
-        self.set_status(format!("Moved to {}", classic::SECTIONS[target]));
-        self.rebuild_rows();
-    }
-
-    fn set_classic_items_raw(&mut self, sec: usize, items: Vec<Value>) {
-        let mut modules = self.classic_modules_root();
-        if !modules.is_object() {
-            modules = json!({});
-        }
-        modules
-            .as_object_mut()
-            .unwrap()
-            .insert(classic::SECTIONS[sec].to_string(), Value::Array(items));
-        let _ = self.settings.set(&["classicbar", "modules"], modules);
-    }
-
-    /// 'g': join selected item with the next one into a group.
-    fn classic_join(&mut self, sec: usize, idx: usize) {
-        let items = self.classic_items(sec);
-        if idx + 1 >= items.len() {
-            self.set_status("Nothing to join with");
-            return;
-        }
-        let members_of = |v: &Value| -> Vec<String> {
-            match v {
-                Value::String(s) => vec![s.clone()],
-                Value::Array(a) => a
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_string)
-                    .collect(),
-                _ => Vec::new(),
-            }
-        };
-        let mut members = members_of(&items[idx]);
-        members.extend(members_of(&items[idx + 1]));
-        if members.len() < 2 {
-            self.set_status("Not enough modules to group");
-            return;
-        }
-        let mut items = items;
-        items.splice(
-            idx..=idx + 1,
-            [Value::Array(
-                members.into_iter().map(Value::String).collect(),
-            )],
-        );
-        self.set_classic_items(sec, items);
-        self.rebuild_rows();
-    }
-
-    /// 'u': ungroup the selected group into loose items.
-    fn classic_ungroup(&mut self, sec: usize, idx: usize) {
-        let items = self.classic_items(sec);
-        let Some(group) = items.get(idx).and_then(classic::is_group) else {
-            self.set_status("Selected item is not a group");
-            return;
-        };
-        let mut items = items;
-        items.splice(idx..=idx, group.into_iter().map(Value::String));
-        self.set_classic_items(sec, items);
-        self.rebuild_rows();
-    }
-
     // ───────────────────────── palette ─────────────────────────
 
     pub fn reload_palette(&mut self) {
@@ -2505,7 +2210,6 @@ impl App {
             },
             _ => {}
         }
-        self.vstate.insert("engine".into(), self.engine.clone());
         self.rebuild_rows();
     }
 
@@ -2687,19 +2391,6 @@ impl App {
             self.last_check = now;
             match self.settings.reload_if_changed() {
                 Ok(true) => {
-                    self.engine = self
-                        .settings
-                        .get_str(&["barEngine"])
-                        .unwrap_or_else(|| "bar".into());
-                    if let Some(gate) = self.current_page().engine
-                        && gate != self.engine
-                    {
-                        self.page = self
-                            .pages
-                            .iter()
-                            .position(|p| p.id == "d_engine")
-                            .unwrap_or(0);
-                    }
                     self.rebuild_rows();
                 }
                 Ok(false) => {}
@@ -2845,18 +2536,6 @@ impl App {
             "Command".into(),
             SearchTarget::Command(SearchCommand::Help),
         );
-        push(
-            format!(
-                "Switch engine ({})",
-                if self.engine == "bar" {
-                    "bar -> classic"
-                } else {
-                    "classic -> bar"
-                }
-            ),
-            "Command".into(),
-            SearchTarget::Command(SearchCommand::ToggleEngine),
-        );
         for &pi in &self.visible_page_indices() {
             let page = &self.pages[pi];
             let group = page.group.label();
@@ -2997,7 +2676,7 @@ impl App {
     fn page_controls_with_sections(&self, page: &Page) -> Vec<(String, usize, Control)> {
         let mut out = Vec::new();
         match &page.body {
-            Body::Controls(sections) | Body::ClassicBar(sections) => {
+            Body::Controls(sections) => {
                 let mut i = 0usize;
                 for section in sections {
                     for c in &section.controls {
@@ -3118,14 +2797,6 @@ impl App {
             SearchTarget::Command(SearchCommand::Reload) => self.hard_reload(),
             SearchTarget::Command(SearchCommand::Quit) => self.quit = true,
             SearchTarget::Command(SearchCommand::Help) => self.mode = Mode::Help,
-            SearchTarget::Command(SearchCommand::ToggleEngine) => {
-                let next = if self.engine == "bar" {
-                    "classic"
-                } else {
-                    "bar"
-                };
-                self.set_engine(next);
-            }
             SearchTarget::Page(page) => {
                 self.page = page;
                 self.sel = 0;
@@ -3791,8 +3462,8 @@ mod tests {
 
     #[test]
     fn arrows_wrap_across_pages() {
-        let (mut app, _) = sandbox(r#"{"barEngine":"bar"}"#);
-        app.page = 0;
+        let (mut app, _) = sandbox(r#"{}"#);
+        app.page = app.pages.iter().position(|p| p.id == "d_general").unwrap();
         app.refresh_page_state();
         let first_page = app.current_page().id;
         // keep pressing Down until the page changes
@@ -3827,13 +3498,11 @@ mod tests {
 
     #[test]
     fn goto_page_id_opens_visible_pages() {
-        let (mut app, _) = sandbox(r#"{"barEngine":"bar"}"#);
+        let (mut app, _) = sandbox(r#"{}"#);
         assert!(app.goto_page_id("d_style"));
         assert_eq!(app.current_page().id, "d_style");
-        // engine-gated page hidden while engine is bar? d_style is bar-only and visible
+        // d_classic was removed with the single-engine refactor.
         assert!(!app.goto_page_id("d_classic"));
-        app.run_action(Action::SetEngine, Some("classic".into()));
-        assert!(app.goto_page_id("d_classic"));
     }
 
     #[test]
@@ -3919,32 +3588,6 @@ mod tests {
     }
 
     #[test]
-    fn engine_switch_seeds_classicbar_and_filters_pages() {
-        let (mut app, _) = sandbox(
-            r#"{"barEngine":"bar","bar":{"position":"bottom","zones":[{"id":"start","align":"start","modules":[{"id":"help","enabled":true}]}]}}"#,
-        );
-        app.run_action(Action::SetEngine, Some("classic".into()));
-        assert_eq!(
-            app.settings.get_str(&["barEngine"]).as_deref(),
-            Some("classic")
-        );
-        assert_eq!(
-            app.settings.get_str(&["classicbar", "position"]).as_deref(),
-            Some("bottom")
-        );
-        assert!(
-            app.settings
-                .get(&["classicbar", "modules", "left"])
-                .is_some()
-        );
-        let visible = app.visible_page_indices();
-        assert!(visible.iter().any(|&i| app.pages[i].id == "d_classic"));
-        assert!(!visible.iter().any(|&i| app.pages[i].id == "d_style"));
-        app.next_page(1);
-        app.next_page(-1);
-    }
-
-    #[test]
     fn zones_add_move_and_delete() {
         let (mut app, _) = sandbox(
             r#"{"bar": {"zones":[{"id":"start","align":"start","modules":[{"id":"help","enabled":true},{"id":"search","enabled":true}]},{"id":"end","align":"end","modules":[]}]}}"#,
@@ -3967,9 +3610,7 @@ mod tests {
 
     #[test]
     fn keybind_add_delete_and_classic_group_ops() {
-        let (mut app, _) = sandbox(
-            r#"{"keybinds":[],"classicbar":{"modules":{"left":["help","search"],"center":[],"right":[],"available":[]}}}"#,
-        );
+        let (mut app, _) = sandbox(r#"{"keybinds":[]}"#);
         app.page = app.pages.iter().position(|p| p.id == "s_keyboard").unwrap();
         app.refresh_page_state();
         app.keybind_add();
@@ -3978,15 +3619,5 @@ mod tests {
         assert_eq!(app.keybinds[0]["key"], "T");
         app.keybind_delete(0);
         assert!(app.keybinds.is_empty());
-
-        app.page = app.pages.iter().position(|p| p.id == "d_classic").unwrap();
-        app.refresh_page_state();
-        app.classic_join(0, 0);
-        let left = app.classic_items(0);
-        assert_eq!(left.len(), 1);
-        assert!(crate::classic::is_group(&left[0]).is_some());
-        app.classic_ungroup(0, 0);
-        let left = app.classic_items(0);
-        assert_eq!(left.len(), 2);
     }
 }

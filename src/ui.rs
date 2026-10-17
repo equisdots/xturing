@@ -64,8 +64,6 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
             format!("{} › {}", page.group.label(), page.label),
             Style::default().add_modifier(Modifier::BOLD),
         ),
-        Span::raw("  "),
-        Span::styled(format!("[{}]", app.engine), Style::default().fg(ACCENT)),
     ]);
     let left_width = line_width(&left);
     let right = " / search · click/double-tap · wheel ";
@@ -84,11 +82,8 @@ fn render_rail(f: &mut Frame, app: &App, area: Rect, hits: &mut Vec<Hit>) {
     let mut lines: Vec<Line> = Vec::new();
     let mut y = inner.y;
     for group in Group::ALL {
-        let pages: Vec<&crate::catalog::Page> = app
-            .pages
-            .iter()
-            .filter(|p| p.group == group && p.engine.map(|e| e == app.engine).unwrap_or(true))
-            .collect();
+        let pages: Vec<&crate::catalog::Page> =
+            app.pages.iter().filter(|p| p.group == group).collect();
         if pages.is_empty() {
             continue;
         }
@@ -341,25 +336,6 @@ fn render_row(app: &App, row: &Row, selected: bool, width: usize) -> Line<'stati
             fill_line(&mut spans, width, base);
             Line::from(spans)
         }
-        Row::ClassicItem { sec, idx } => {
-            let items = classic_items_of(app, *sec);
-            let item = items.get(*idx).cloned().unwrap_or_default();
-            let label = crate::classic::item_label(&item);
-            let grouped = matches!(item, serde_json::Value::Array(_));
-            let mut spans = vec![
-                Span::styled("   ", dim),
-                Span::styled(
-                    if grouped {
-                        format!("▣ {}", label)
-                    } else {
-                        format!("▢ {}", label)
-                    },
-                    base,
-                ),
-            ];
-            fill_line(&mut spans, width, base);
-            Line::from(spans)
-        }
         Row::PaletteItem(i) => {
             let p = app.palettes.get(*i);
             let (name, slug, cat) = p
@@ -537,9 +513,6 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
             }
             Row::ZoneModule { .. } => {
                 help = "Enter: enable/disable · Shift+←/→: move (crosses zones)".into()
-            }
-            Row::ClassicItem { .. } => {
-                help = "↑/↓: reorder · m: move section · g: group · u: ungroup".into()
             }
             Row::PaletteItem(_) => help = "Enter or click: activate palette".into(),
             Row::PaletteSlot(_) => help = "Enter: edit hex (#rrggbb)".into(),
@@ -885,15 +858,6 @@ fn zone_field_value(zone: Option<&serde_json::Value>, field: usize) -> String {
         _ => String::new(),
     }
 }
-
-fn classic_items_of(app: &App, sec: usize) -> Vec<serde_json::Value> {
-    app.settings
-        .get(&["classicbar", "modules", crate::classic::SECTIONS[sec]])
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default()
-}
-
 fn monitor_value(app: &App, mon: usize, field: usize) -> String {
     let Some(m) = app.monitors.get(mon) else {
         return "—".into();
