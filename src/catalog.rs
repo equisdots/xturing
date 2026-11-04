@@ -560,7 +560,7 @@ pub fn build() -> Vec<Page> {
                         action(
                             "Change wallpaper",
                             Action::OpenWidget("wallpaper".into()),
-                            "Open the davincix picker (wallpaper widget)",
+                            "Open the davinci picker (wallpaper widget)",
                         ),
                     ],
                 ),
